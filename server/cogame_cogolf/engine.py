@@ -643,7 +643,9 @@ class Engine:
                 "impl": sub["impl"],
                 "impl_lines": len(sub["impl"].splitlines()),
                 "broken": bool(broken[slot]),
-                "broken_reason": broken[slot],
+                "broken_reason": clean_text(
+                    broken[slot], contract.MAX_BROKEN_REASON_CHARS)
+                if broken[slot] else None,
                 "note": sub["note"],
                 "fallback": causes[slot],
                 "dropped_tests": sub["dropped_tests"],

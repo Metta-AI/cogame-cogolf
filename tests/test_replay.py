@@ -17,7 +17,7 @@ from cogame_cogolf.replay import (FORMAT, VERSION, Replay, ReplayError,
 from cogame_cogolf.results import EpisodeResult, SeatOutcome, results_doc
 from cogame_cogolf.sandbox import Sandbox
 from tests.conftest import REPO_ROOT, make_config
-from tests.fakes import ScriptedSource
+from tests.fakes import FakeSandbox, ScriptedSource
 
 # Every hostile string the wire can carry: emoji (4-byte), CJK, a lone
 # surrogate, and strings sitting exactly on each cap.
@@ -78,6 +78,38 @@ def test_every_recorded_string_is_within_its_cap():
                 assert len(test["name"]) <= contract.MAX_TEST_NAME_CHARS
                 assert len(test["why"]) <= contract.MAX_WHY_CHARS
                 assert len(test["observed"]) <= contract.MAX_OBSERVED_CHARS
+
+
+def test_the_broken_reason_is_sanitised_like_every_other_replay_string():
+    """A broken impl's reason is the one replay string whose only cap was the
+    sandbox's 300-char clip. It lands in the document like any other, so it
+    goes through clean_text too: control characters out, lone surrogates
+    replaced, cap on rune boundaries."""
+
+    class BrokenImpls(FakeSandbox):
+        """Both submitted impls fail to load; the reference still runs."""
+
+        def run_reference(self, source, calls):
+            return FakeSandbox()._run(source, calls)
+
+    reason = "\x07boom" + LONE_SURROGATE + "\u0007" + "z" * 400
+    config = make_config(holes=1)
+    writer = ReplayWriter(config, config.seed)
+    engine = Engine(config,
+                    [ScriptedSource("literalist"), ScriptedSource("pedant")],
+                    BrokenImpls(broken=reason), seed=config.seed,
+                    on_event=writer.append_event, on_hole=writer.append_hole)
+    result = asyncio.run(engine.run())
+    blob = writer.finalize(results_doc(config, result))
+    doc = json.loads(blob.decode("utf-8"))          # strict UTF-8 both sides
+
+    for seat in doc["holes"][0]["seats"]:
+        assert seat["broken"] is True
+        text = seat["broken_reason"]
+        assert text and "boom" in text
+        assert "\x07" not in text and LONE_SURROGATE not in text
+        assert "\ufffd" in text, "the lone surrogate became U+FFFD"
+        assert len(text) <= contract.MAX_BROKEN_REASON_CHARS
 
 
 def test_the_structural_contract():
