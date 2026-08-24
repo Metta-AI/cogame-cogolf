@@ -1,0 +1,542 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Metta-AI/metta/main/packages/coworld/src/coworld/coworld_manifest_schema.json",
+  "tags": [
+    "code-agents",
+    "adversarial",
+    "testing",
+    "spec-interpretation"
+  ],
+  "episode_timeout_minutes": 20,
+  "game": {
+    "name": "cogolf",
+    "replay_viewer": {
+      "bundle": "static-replay-viewer"
+    },
+    "description": "Cogolf is a nine-hole match between two code agents. Each hole reveals ONE deliberately ambiguous spec. Both seats simultaneously submit an implementation of solve(...) and up to five test cases. Then the harness cross-fires: your tests are shot at their code, theirs at yours, and a hidden four-case par suite audits both. A hidden reference implementation settles which reading of the ambiguous clause is real, and a test only counts if the reference agrees with it — so the contest is to read the intent better than your opponent, then aim at where their reading differs. Scoring is zero-sum: (your breaching tests + their audit failures) - (their breaching tests + your audit failures). Every submitted implementation runs in a sandboxed subprocess with CPU, memory and syscall limits. The replay shows each test as a dart fired at the opponent's code-fortress, deflected or breaching with crumbling masonry, with the spec hanging as a scroll above the arena.",
+    "owner": "daveey@softmax.com",
+    "runnable": {
+      "type": "game",
+      "image": "{{GAME_IMAGE}}",
+      "run": [
+        "/bin/cogolf"
+      ],
+      "source_url": "https://github.com/Metta-AI/cogame-cogolf/tree/main",
+      "resources": {
+        "requests": {
+          "cpu": "2",
+          "memory": "2Gi",
+          "ephemeral-storage": "2Gi"
+        }
+      }
+    },
+    "config_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "players"
+      ],
+      "properties": {
+        "tokens": {
+          "description": "One connection token per player seat, indexed by seat slot. Injected by the runner; never authored.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "players": {
+          "description": "One player display-name object per seat, indexed by seat slot. The name is spectator-side only: a policy sees the anonymous alias (Ash / Basil), never this.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "num_agents": {
+          "description": "Number of agent seats. Cogolf is a two-seat zero-sum game and the schema refuses any other seat count.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 2,
+          "default": 2
+        },
+        "deck": {
+          "description": "Spec deck to draw the holes from. 'core' is the twelve-spec deck that ships in server/cogame_cogolf/specs/.",
+          "type": "string",
+          "default": "core"
+        },
+        "holes": {
+          "description": "Holes in the match; each hole draws one spec from the deck without replacement.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "default": 9
+        },
+        "seed": {
+          "description": "Seed for the hole draw. 0 mints a fresh one; the RESOLVED seed is recorded in the results doc and the replay, so an episode is reproducible from its own bytes.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "hole_deadline_seconds": {
+          "description": "Seconds a seat has to answer a hole's observation with a submission. Both seats are asked in one parallel batch, so a hole costs the max of the two, not the sum.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 40
+        },
+        "retry_deadline_seconds": {
+          "description": "Seconds for the single retry a seat gets after missing the hole deadline; after that the engine plays the scripted literalist submission for it.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 15
+        },
+        "max_tests_per_hole": {
+          "description": "Tests a seat may fire per hole; entries past the cap are dropped.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 5
+        },
+        "par_tests_per_hole": {
+          "description": "Hidden audit cases run against each seat's implementation every hole. Fixed by the deck.",
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 4,
+          "default": 4
+        },
+        "call_cpu_seconds": {
+          "description": "CPU budget for one solve(*args) call inside the sandbox; a call that exceeds it is a breach for the defender.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0
+        },
+        "sandbox_batch_seconds": {
+          "description": "Wall-clock cap on one sandbox subprocess batch. Results that arrived before the kill are kept; missing calls are recorded as timeouts.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 6
+        },
+        "hole_reserve_seconds": {
+          "description": "The engine refuses to start a hole with less than this much of the wall-clock budget left, and settles with reason 'deadline' instead.",
+          "type": "number",
+          "minimum": 0,
+          "default": 80
+        },
+        "min_hole_spacing_seconds": {
+          "description": "Floor on the wall-clock gap between two hole reveals, so an all-scripted episode cannot burst the hosted LLM sidecar's 30 requests/minute cap.",
+          "type": "number",
+          "minimum": 0,
+          "default": 4
+        },
+        "player_connect_timeout_seconds": {
+          "description": "Seconds to wait for the seats to connect before play starts anyway (a seat that never connects plays the literalist fallback every hole and is reported to COGAME_PLAYER_FAILURE_URI).",
+          "type": "number",
+          "minimum": 0,
+          "default": 90
+        },
+        "wall_clock_budget_seconds": {
+          "description": "Engine wall-clock hard stop: the episode settles itself with reason 'deadline' (scores as of the last fully resolved hole, artifacts written) once this much real time has elapsed. 700 s is inside the 60 % of episodeTimeoutSeconds the platform expects a game to play within.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 700
+        }
+      }
+    },
+    "results_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "names",
+        "aliases",
+        "scores",
+        "hole_scores",
+        "breaches",
+        "breaches_taken",
+        "par_fails",
+        "tests_fired",
+        "illegal_tests",
+        "holes_played",
+        "fallbacks",
+        "fallback_causes",
+        "reason",
+        "wall_clock_seconds",
+        "seed",
+        "deck_version",
+        "killer_test"
+      ],
+      "properties": {
+        "names": {
+          "description": "One real player name per seat, in seat-slot order. Spectator side only.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        "aliases": {
+          "description": "The anonymous in-game aliases the policies saw: slot 0 is Ash, slot 1 is Basil.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        "scores": {
+          "description": "The match score per seat, higher wins. Zero-sum by construction: scores[0] + scores[1] == 0, and [0, 0] is a draw.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "hole_scores": {
+          "description": "Per-seat list of that seat's score on each resolved hole.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "breaches": {
+          "description": "Legal tests of this seat that made the opponent's implementation fail.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "breaches_taken": {
+          "description": "Legal tests of the opponent that made THIS seat's implementation fail.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "par_fails": {
+          "description": "Hidden par-test failures of this seat's own implementations, summed over the match.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "tests_fired": {
+          "description": "Legal tests this seat actually fired.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "illegal_tests": {
+          "description": "Tests of this seat the reference rejected (they never fired and never scored).",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "holes_played": {
+          "description": "Holes fully resolved in this episode.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallbacks": {
+          "description": "Holes where the engine had to synthesise the scripted literalist submission for this seat.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "fallback_causes": {
+          "description": "Per-seat fallback cause counters; they partition 'fallbacks'.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "timeout",
+              "malformed",
+              "oversize",
+              "disconnected",
+              "host_error"
+            ],
+            "properties": {
+              "timeout": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "malformed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "oversize": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "disconnected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "host_error": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "reason": {
+          "description": "Why the match ended: every hole resolved (complete), the wall-clock budget expired (deadline: scores as of the last fully resolved hole), or the sandbox harness faulted (harness_fault: same, artifacts still written).",
+          "type": "string",
+          "enum": [
+            "complete",
+            "deadline",
+            "harness_fault"
+          ]
+        },
+        "wall_clock_seconds": {
+          "description": "Real seconds from episode start to end.",
+          "type": "number",
+          "minimum": 0
+        },
+        "seed": {
+          "description": "The RESOLVED seed of the hole draw, so the match can be reproduced from this document.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "deck_version": {
+          "description": "Version of the spec deck the holes were drawn from.",
+          "type": "string"
+        },
+        "killer_test": {
+          "description": "The winning seat's most decisive breaching test, with its author's one-line why; null for a draw or a match with no breach.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "hole",
+            "slot",
+            "target_slot",
+            "name",
+            "why"
+          ],
+          "properties": {
+            "hole": {
+              "type": "integer"
+            },
+            "slot": {
+              "type": "integer"
+            },
+            "target_slot": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "why": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "protocols": {
+      "player": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/cogame-cogolf/blob/main/docs/PROTOCOL.md"
+      },
+      "global": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/cogame-cogolf/blob/main/docs/PROTOCOL.md"
+      }
+    },
+    "docs": {
+      "readme": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/cogame-cogolf/blob/main/README.md"
+      },
+      "pages": [
+        {
+          "id": "rules.md",
+          "title": "Rules & submission contract",
+          "content": {
+            "type": "uri",
+            "value": "https://github.com/Metta-AI/cogame-cogolf/blob/main/docs/RULES.md"
+          }
+        },
+        {
+          "id": "replay.md",
+          "title": "Replay format",
+          "content": {
+            "type": "uri",
+            "value": "https://github.com/Metta-AI/cogame-cogolf/blob/main/docs/REPLAY.md"
+          }
+        }
+      ]
+    }
+  },
+  "player": [
+    {
+      "id": "literalist",
+      "name": "literalist baseline",
+      "type": "player",
+      "description": "Scripted baseline: the reference-aligned reader. It submits a plain implementation that follows the prompt's text and fires the spec's five safe, reference-consistent shots, so every one of its tests is legal.",
+      "image": "{{PLAYER_IMAGE}}",
+      "run": [
+        "/bin/cogolf-player"
+      ],
+      "env": {
+        "PLAYER_SCRIPTED": "literalist"
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-cogolf/tree/main/players",
+      "resources": {
+        "requests": {
+          "cpu": "250m",
+          "memory": "256Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      }
+    },
+    {
+      "id": "pedant",
+      "name": "pedant baseline",
+      "type": "player",
+      "description": "Scripted baseline: the edge-case sniper. Its implementation is right on the common path and wrong on a different clause than the literalist's, and it fires aggressive boundary tests — some of which the reference rejects as illegal, which is exactly the lesson it exists to demonstrate.",
+      "image": "{{PLAYER_IMAGE}}",
+      "run": [
+        "/bin/cogolf-player"
+      ],
+      "env": {
+        "PLAYER_SCRIPTED": "pedant"
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-cogolf/tree/main/players",
+      "resources": {
+        "requests": {
+          "cpu": "250m",
+          "memory": "256Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      }
+    }
+  ],
+  "variants": [
+    {
+      "id": "duel",
+      "name": "Nine holes (2 seats)",
+      "description": "The full match: nine holes drawn from the core deck, 40 s per hole with one 15 s retry, five tests a hole. Zero-sum; the score range is ±81.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Player1"
+          },
+          {
+            "name": "Player2"
+          }
+        ],
+        "num_agents": 2,
+        "deck": "core",
+        "holes": 9,
+        "hole_deadline_seconds": 40,
+        "retry_deadline_seconds": 15,
+        "max_tests_per_hole": 5,
+        "wall_clock_budget_seconds": 700
+      }
+    },
+    {
+      "id": "blitz",
+      "name": "Five holes, fast (2 seats)",
+      "description": "A short match for quick ladders: five holes, 30 s per hole with a 12 s retry, four tests a hole.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Player1"
+          },
+          {
+            "name": "Player2"
+          }
+        ],
+        "num_agents": 2,
+        "deck": "core",
+        "holes": 5,
+        "hole_deadline_seconds": 30,
+        "retry_deadline_seconds": 12,
+        "max_tests_per_hole": 4,
+        "wall_clock_budget_seconds": 420
+      }
+    }
+  ],
+  "certification": {
+    "players": [
+      {
+        "player_id": "literalist"
+      },
+      {
+        "player_id": "pedant"
+      }
+    ],
+    "game_config": {
+      "players": [
+        {
+          "name": "Literalist"
+        },
+        {
+          "name": "Pedant"
+        }
+      ],
+      "num_agents": 2,
+      "deck": "core",
+      "holes": 3,
+      "seed": 7,
+      "hole_deadline_seconds": 20,
+      "retry_deadline_seconds": 10,
+      "max_tests_per_hole": 5,
+      "sandbox_batch_seconds": 6,
+      "player_connect_timeout_seconds": 90,
+      "wall_clock_budget_seconds": 240
+    }
+  }
+}

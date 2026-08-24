@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cogame-cogolf replay</title>
+<!-- Inline data-URI favicon (amber gear on warm-dark) so the theater shell never
+     triggers a /favicon.ico 404. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%2316110d'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='7'%20fill='none'%20stroke='%23e8a33d'%20stroke-width='5'%20stroke-dasharray='4.4%202.6'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='3'%20fill='%23e8a33d'/%3E%3C/svg%3E">
+<style>
+@font-face {
+  font-family: 'rajdhani';
+  /* Rajdhani SemiBold (Indian Type Foundry, SIL OFL 1.1 — see
+     viewer/FONT_LICENSE.txt), subset to Latin. The scoreboard face shared
+     with the coworld-ctf chrome (its client/league_replayer.html embeds the
+     same subset), inlined so the bundle stays self-contained. */
+  src: url(data:font/ttf;base64,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ILACQ2BkI7ADQ2FkUFiwAkNhG7ADQ2BZsAMlsAJiILAAUFiwQGBZZrABY2GwAiVGYTgjIDwjOBshICBGI0ewASsjYTghWbErARQrLbBCLLA1Ky6xKwEUKy2wQyywNishIyAgPLAEI0IjOLErARQrsARDLrArKy2wRCywABUgR7AAI0KyAAEBFRQTLrAxKi2wRSywABUgR7AAI0KyAAEBFRQTLrAxKi2wRiyxAAEUE7AyKi2wRyywNCotsEgssAAWRSMgLiBGiiNhOLErARQrLbBJLLAII0KwSCstsEossgAAQSstsEsssgABQSstsEwssgEAQSstsE0ssgEBQSstsE4ssgAAQistsE8ssgABQistsFAssgEAQistsFEssgEBQistsFIssgAAPistsFMssgABPistsFQssgEAPistsFUssgEBPistsFYssgAAQCstsFcssgABQCstsFgssgEAQCstsFkssgEBQCstsFossgAAQystsFsssgABQystsFwssgEAQystsF0ssgEBQystsF4ssgAAPystsF8ssgABPystsGAssgEAPystsGEssgEBPystsGIssDcrLrErARQrLbBjLLA3K7A7Ky2wZCywNyuwPCstsGUssAAWsDcrsD0rLbBmLLA4Ky6xKwEUKy2wZyywOCuwOystsGgssDgrsDwrLbBpLLA4K7A9Ky2waiywOSsusSsBFCstsGsssDkrsDsrLbBsLLA5K7A8Ky2wbSywOSuwPSstsG4ssDorLrErARQrLbBvLLA6K7A7Ky2wcCywOiuwPCstsHEssDorsD0rLbByLLMJBAIDRVghGyMhWUIrsAhlsAMkUHiwARUwLQBLuAAyUlixAQGOWbABuQgACABjcLEABUKzLRkCACqxAAVCtSAIDgcCCCqxAAVCtSoGFwUCCCqxAAdCuwhAA8AAAgAJKrEACUK7AEAAQAACAAkqsQMARLEkAYhRWLBAiFixA2REsSYBiFFYugiAAAEEQIhjVFixAwBEWVlZWbUiCBAHAgwquAH/hbAEjbECAEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFkAWQIoAFEAUQN2Am8CbwAn/wMD6P4MA3YCcAJvAAD/AwPo/gwAYQBhAFUAVQKDAAACvwH+AAD/bAPo/gwCgwAAAr8B/gAA/2wD6P4MAAAABwBaAAMAAQQJAAAAhgAAAAMAAQQJAAEAIgCGAAMAAQQJAAIADgCoAAMAAQQJAAMAOAC2AAMAAQQJAAQAIgCGAAMAAQQJAAUA8ADuAAMAAQQJAAYAIgHeAEMAbwBwAHkAcgBpAGcAaAB0ACAAKABjACkAIAAyADAAMQA0ACAASQBuAGQAaQBhAG4AIABUAHkAcABlACAARgBvAHUAbgBkAHIAeQAgACgAaQBuAGYAbwBAAGkAbgBkAGkAYQBuAHQAeQBwAGUAZgBvAHUAbgBkAHIAeQAuAGMAbwBtACkAUgBhAGoAZABoAGEAbgBpACAAUwBlAG0AaQBCAG8AbABkAFIAZQBnAHUAbABhAHIAMQAuADIAMAAxADsASQBUAEYATwA7AFIAYQBqAGQAaABhAG4AaQAtAFMAZQBtAGkAQgBvAGwAZABWAGUAcgBzAGkAbwBuACAAMQAuADIAMAAxADsAUABTACAAMQAuADAAOwBoAG8AdABjAG8AbgB2ACAAMQAuADAALgA3ADgAOwBtAGEAawBlAG8AdABmAC4AbABpAGIAMgAuADUALgA2ADEAOQAzADAAOwAgAHQAdABmAGEAdQB0AG8AaABpAG4AdAAgACgAdgAxAC4AMQApACAALQBsACAANwAgAC0AcgAgADIAOAAgAC0ARwAgADUAMAAgAC0AeAAgADEAMwAgAC0ARAAgAGwAYQB0AG4AIAAtAGYAIABkAGUAdgBhACAALQB3ACAARwBSAGEAagBkAGgAYQBuAGkALQBTAGUAbQBpAEIAbwBsAGQAAAADAAAAAAAA/7UAMgAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAf//AA8AAQAAAAwAAAAAAAAAAgABAAEAYwABAAAAAQAAAAoADAAOAAAAAAAAAAEAAAAKABYAGAABZGV2YQAIAAAAAAAAAAAAAA==) format('truetype');
+  font-display: block;
+}
+
+  /* Palette / typography tokens copied verbatim from coworld-ctf
+     client/league_replayer.html so the two chromes match. */
+  :root{
+    color-scheme: dark;
+    --stage-lo:#16110d; --stage-hi:#241a12; --surround:#0b0805;
+    --paper:#f2e8d8; --paper-dim:#b8ac98;
+    --ink:#2a1f16; --ink-soft:rgba(20,14,9,.72);
+    --red:#e0523a; --blue:#3f7cc4; --green:#45a85e; --yellow:#ddc531;
+    --amber:#e8a33d; --ghost:#8a7f72;
+    --pixfont:'rajdhani','Segoe UI',system-ui,sans-serif;
+    --finefont:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    /* HUD unit: ctf scales its --u with the board width; here it follows the
+       viewport (1 at 1440x820, floor 0.68 for a 1024x768 pane, cap 1.2 for a
+       wall) so the top wall + transport stay under ~180 px on a 1280x800
+       laptop and the board gets the rest. --hud is the ?hud=<0.6..1.5>
+       override multiplier (set from the URL by the page script). */
+    --hud:1;
+    --u:calc(var(--hud) * clamp(0.68px, min(100vw / 1440, 100vh / 820), 1.2px));
+    /* per-seat tints (chips, standings, markers) — --tc utility like ctf's team classes */
+    --seat0:#e8a33d; --seat1:#3f7cc4; --seat2:#45a85e; --seat3:#e0523a;
+    --seat4:#ddc531; --seat5:#c47bd6; --seat6:#5cc8ff; --seat7:#f2e8d8;
+  }
+  .seat0{--tc:var(--seat0)} .seat1{--tc:var(--seat1)} .seat2{--tc:var(--seat2)} .seat3{--tc:var(--seat3)}
+  .seat4{--tc:var(--seat4)} .seat5{--tc:var(--seat5)} .seat6{--tc:var(--seat6)} .seat7{--tc:var(--seat7)}
+  .draw{--tc:var(--ghost)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--surround); color:var(--paper); font-family:var(--finefont); overflow:hidden;
+    display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:100%; height:100vh;
+    background:radial-gradient(120% 90% at 50% 42%, var(--stage-hi), var(--surround) 78%);}
+  #banner {
+    display: none; background: #4a1a18; color: #ffd8d4;
+    border-bottom: 1px solid var(--red); padding: 8px 14px; font-family: var(--mono); font-size:12px;
+    white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow: auto;
+  }
+  #banner.show { display: block; }
+  /* explicit rows: the hidden banner must not shift the other bands' tracks */
+  #banner{grid-row:1} #scorebug{grid-row:2} #main{grid-row:3} #transport{grid-row:4}
+
+  /* ============================================================
+     THE PIT: scorebug band on top (task, clock, the selected seat's
+     step readout, seat chips), the map floor in the middle with the
+     program/output plaque on the right (collapsible), transport band
+     below — the walled-pit layout of the ctf League Replayer, with
+     CSS stone instead of jpg walls.
+     ============================================================ */
+  .hud{font-family:var(--pixfont)}
+  #main{--col-r:clamp(300px, 28vw, 440px); --tab:calc(14*var(--u));
+    display:grid; grid-template-columns:minmax(0,1fr) var(--col-r); min-height:0}
+  @media (max-width: 980px){ #main{--col-r:clamp(240px,34vw,360px)} }
+  /* collapsible right plaque: folds down to its edge tab, the pit floor
+     takes the full width (the stage ResizeObserver re-fits the board) */
+  #main[data-right="0"]{--col-r:var(--tab)}
+  .plaque-col{position:relative}
+  .plaque-col.collapsed .plaque{display:none}
+  .pane-tab{position:absolute; top:50%; transform:translateY(-50%); z-index:3; width:var(--tab); height:calc(64*var(--u));
+    border:0; padding:0; cursor:pointer; color:var(--paper-dim); background:var(--stage-lo);
+    box-shadow:0 0 0 1px rgba(242,232,216,.10), inset 0 calc(1*var(--u)) 0 rgba(242,232,216,.06);
+    font-family:var(--pixfont); font-size:calc(11*var(--u)); line-height:1; display:flex; align-items:center; justify-content:center}
+  .pane-tab:hover{color:var(--amber); background:var(--stage-hi)}
+  .pane-tab:focus-visible{outline:2px solid var(--amber); outline-offset:-2px}
+  .plaque-col.right-col .pane-tab{left:0; border-radius:0 calc(4*var(--u)) calc(4*var(--u)) 0}
+  .plaque-col.collapsed .pane-tab{left:0; right:0; width:100%; border-radius:0}
+
+  /* the map — the lit pit floor */
+  #stage{position:relative; min-width:0; min-height:0; overflow:hidden; background:#120c08;
+    box-shadow:0 0 calc(40*var(--u)) calc(10*var(--u)) rgba(232,163,61,.10),
+               0 0 0 2px rgba(0,0,0,.55), inset 0 0 0 1px rgba(242,232,216,.05); z-index:2}
+  #canvas{position:absolute; left:0; top:0; width:100%; height:100%; display:block; outline:none; image-rendering:pixelated; touch-action:none}
+  #status{position:absolute; z-index:9; left:50%; top:calc(50% - 10px); transform:translate(-50%,-50%);
+    font-family:var(--finefont); font-size:13px; color:var(--paper-dim); background:var(--ink-soft);
+    padding:8px 16px; border-radius:20px; display:none; pointer-events:none; white-space:pre-line; text-align:center}
+  #status.show{display:block}
+  #tooltip{position:absolute; display:none; pointer-events:none; z-index:5;
+    background:rgba(20,14,9,.94); border-radius:calc(3*var(--u)); box-shadow:0 0 0 1px rgba(242,232,216,.12), 0 2px 10px rgba(0,0,0,.5);
+    padding:calc(5*var(--u)) calc(8*var(--u)); font-family:var(--pixfont); font-size:calc(11*var(--u)); white-space:nowrap}
+  #tooltip .st{color:var(--paper-dim); font-family:var(--finefont); font-size:calc(9*var(--u))}
+  #tooltip .st.problem{color:var(--red)}
+  #tooltip .st.working{color:var(--green)}
+  /* ============================================================
+     TOP WALL — the scorebug: task headline (left), the step clock,
+     the selected seat's step readout, the per-seat chips (right;
+     rank order, click = select seat + focus its character).
+     ============================================================ */
+  /* ONE row (title | clock | this-step readout | seat chips): nothing wraps;
+     the title block, then the chips (names ellipsize), then the readout give
+     way as the pane narrows. Only a phone-width pane falls back to wrapping. */
+  #scorebug{display:flex; align-items:center; justify-content:center; flex-wrap:nowrap;
+    padding:calc(6*var(--u)) calc(14*var(--u)); gap:calc(8*var(--u)) calc(16*var(--u)); min-height:calc(56*var(--u))}
+  @media (max-width: 760px){ #scorebug{flex-wrap:wrap} }
+  .wallnames{flex:1 2 calc(240*var(--u)); min-width:calc(120*var(--u)); display:flex; flex-direction:column; justify-content:center; gap:calc(2*var(--u))}
+  #stepro{flex:0 1 auto; display:flex; align-items:center; gap:calc(10*var(--u)); padding:calc(4*var(--u)) calc(10*var(--u));
+    background:rgba(20,14,9,.45); border-radius:calc(3*var(--u)); min-width:0; overflow:hidden}
+  #stepro .ro{flex:none}
+  #stepro .who{flex:0 1 auto; min-width:calc(40*var(--u)); font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.14em; text-transform:uppercase; color:var(--paper-dim);
+    white-space:nowrap; max-width:calc(120*var(--u)); overflow:hidden; text-overflow:ellipsis}
+  #stepro .who b{display:block; font-family:var(--pixfont); font-size:calc(11*var(--u)); letter-spacing:.02em; text-transform:none; color:var(--tc, var(--paper))}
+  #stepro .ro .v{font-size:calc(13*var(--u))}
+  #stepro #flags{margin-top:0}
+  .wallname{min-width:0; font-family:var(--pixfont); font-size:calc(26*var(--u));
+    letter-spacing:.5px; line-height:1.05; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    color:var(--tc, var(--paper));
+    text-shadow:0 calc(2*var(--u)) 0 var(--ink), 0 0 calc(11*var(--u)) rgba(0,0,0,.72)}
+  .wallrow{display:flex; align-items:baseline; gap:calc(6*var(--u)); min-width:0}
+  .wallrow .wallname{flex:0 1 auto}
+  .wallsub{font-family:var(--finefont); font-size:calc(9*var(--u)); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--paper-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 calc(1*var(--u)) 0 #000}
+  /* version pill: an amber pill like ctf's handicap chip; the full note rides in `title` */
+  .hcap{flex:none; font-family:var(--finefont); font-size:calc(11*var(--u));
+    letter-spacing:.04em; line-height:1; color:var(--ink); background:var(--amber);
+    border-radius:calc(4*var(--u)); padding:calc(3*var(--u)) calc(5*var(--u)); white-space:nowrap; cursor:help}
+  .hcap.legacy{background:var(--ghost)}
+  .clock{flex:none; position:relative; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:calc(3*var(--u)); min-width:calc(120*var(--u))}
+  .clock .time{font-family:var(--pixfont); font-size:calc(34*var(--u)); line-height:1; color:var(--paper);
+    text-shadow:0 calc(2*var(--u)) 0 var(--ink), 0 0 calc(10*var(--u)) rgba(0,0,0,.7); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .clock .caption{font-family:var(--finefont); font-size:calc(9*var(--u)); letter-spacing:.18em;
+    text-transform:uppercase; color:var(--paper-dim); white-space:nowrap; text-shadow:0 calc(1*var(--u)) 0 #000}
+  .clock.tiebreak-warn .time{color:var(--amber)}
+  .clock.amb{animation:clocktick 2s ease-in-out infinite}
+  @keyframes clocktick{0%,100%{opacity:.94}50%{opacity:1}}
+  /* seat score chips: the ctf scorebug plates, one per seat, click to select */
+  #seatchips{flex:0 3 auto; min-width:0; display:flex; justify-content:flex-end; gap:calc(6*var(--u)); flex-wrap:nowrap}
+  @media (max-width: 760px){ #seatchips{flex-wrap:wrap} }
+  .seatchip{display:flex; align-items:baseline; gap:calc(7*var(--u)); font-family:var(--pixfont); color:var(--paper);
+    background:rgba(20,14,9,.55); border:none; padding:calc(4*var(--u)) calc(9*var(--u)); cursor:pointer; line-height:1;
+    box-shadow:0 0 calc(3*var(--u)) rgba(0,0,0,.5), inset 0 calc(-3*var(--u)) 0 var(--tc, var(--ghost));
+    flex:0 1 auto; max-width:calc(250*var(--u)); min-width:calc(84*var(--u)); overflow:hidden}
+  .seatchip > *{flex:none}
+  .seatchip:hover{background:rgba(242,232,216,.16)}
+  .seatchip.active{background:rgba(232,163,61,.16); box-shadow:inset 0 0 0 1px rgba(232,163,61,.55), inset 0 calc(-3*var(--u)) 0 var(--tc, var(--ghost))}
+  /* the name is the only part that shrinks: it truncates with an ellipsis, never wraps */
+  .seatchip .nm{flex:0 1 auto; min-width:calc(28*var(--u)); font-size:calc(13*var(--u)); letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--tc, var(--paper))}
+  .seatchip .sc{font-size:calc(20*var(--u)); font-variant-numeric:tabular-nums; text-shadow:0 calc(2*var(--u)) 0 var(--ink)}
+  .seatchip .sc.hidden{color:var(--paper-dim); letter-spacing:.1em}
+  .seatchip .dead{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.14em; text-transform:uppercase; color:var(--red)}
+  .seatchip .rk{font-size:calc(10*var(--u)); color:var(--paper-dim); font-variant-numeric:tabular-nums}
+  .seatchip .st{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.1em; text-transform:uppercase; color:var(--paper-dim); white-space:nowrap}
+  .seatchip .st i{font-style:normal; margin-left:calc(4*var(--u))}
+  .seatchip .st i.err{color:var(--red)} .seatchip .st i.noop{color:var(--ghost)}
+  #endcard .ec-tname{cursor:pointer} #endcard .ec-tname:hover{text-decoration:underline}
+  .seatchip.leader .sc{animation:leaderpulse 1.9s ease-in-out infinite}
+  @keyframes leaderpulse{0%,100%{text-shadow:0 calc(2*var(--u)) 0 var(--ink)} 50%{text-shadow:0 0 calc(11*var(--u)) var(--amber)}}
+
+  /* ============================================================
+     RIGHT PLAQUE — the program / output / inventory / production /
+     result panels (standings ride on the scorebug chips + end card).
+     ============================================================ */
+  .plaque-col{display:flex; flex-direction:column; min-height:0; overflow:hidden}
+  .plaque{display:flex; flex-direction:column; padding:calc(6*var(--u)) calc(10*var(--u)); min-height:0; overflow:auto}
+  .team-head{display:flex; align-items:center; gap:calc(9*var(--u)); min-width:0; margin-bottom:calc(8*var(--u))}
+  .team-head .lives-line{display:flex; align-items:baseline; gap:calc(5*var(--u)); min-width:0}
+  .lives-num{font-family:var(--pixfont); font-size:calc(20*var(--u)); line-height:1; color:var(--paper); flex:none;
+    text-shadow:0 calc(2*var(--u)) 0 var(--ink), 0 0 calc(9*var(--u)) rgba(0,0,0,.7); font-variant-numeric:tabular-nums}
+  .lives-label{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--paper-dim); flex:none; text-shadow:0 calc(1*var(--u)) 0 #000}
+  .khead,.krow{display:grid; align-items:center; gap:calc(5*var(--u));
+    grid-template-columns:calc(14*var(--u)) 1fr calc(44*var(--u)) calc(26*var(--u))}
+  .khead{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.08em; text-transform:uppercase;
+    color:var(--paper-dim); padding:0 calc(3*var(--u)) calc(4*var(--u)); border-bottom:1px solid rgba(242,232,216,.18)}
+  .khead span:not(:first-child):not(:nth-child(2)){text-align:right}
+  .krow{font-family:var(--pixfont); font-size:calc(12*var(--u)); padding:calc(3.5*var(--u)) calc(3*var(--u));
+    border-radius:calc(2*var(--u)); cursor:pointer}
+  .krow:nth-child(odd){background:rgba(242,232,216,.035)}
+  .krow:hover{background:rgba(242,232,216,.09)}
+  .krow.dead{opacity:.42}
+  .krow.pov{background:rgba(232,163,61,.16); box-shadow:inset 0 0 0 1px rgba(232,163,61,.5)}
+  .krow .rk{font-variant-numeric:tabular-nums; color:var(--tc, var(--paper-dim))}
+  .krow .who{display:flex; align-items:center; gap:calc(3*var(--u)); min-width:0}
+  .who .nm{min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--paper-dim); font-size:calc(11*var(--u))}
+  .who .sw{flex:none; width:calc(6*var(--u)); height:calc(6*var(--u)); border-radius:1px; background:var(--tc, var(--paper-dim))}
+  .krow .n{font-variant-numeric:tabular-nums; text-align:right}
+  .krow .k{color:var(--paper)} .krow .d{color:var(--paper-dim)}
+  .pfoot{margin-top:calc(10*var(--u)); padding-top:calc(8*var(--u)); border-top:1px solid rgba(242,232,216,.14)}
+  .pfoot .lab{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.13em; text-transform:uppercase; color:var(--paper-dim)}
+  #readouts{display:grid; grid-template-columns:1fr 1fr; gap:calc(4*var(--u)) calc(8*var(--u)); margin-top:calc(4*var(--u))}
+  .ro{display:flex; flex-direction:column; min-width:0}
+  .ro .k{font-family:var(--finefont); font-size:calc(7.5*var(--u)); letter-spacing:.12em; text-transform:uppercase; color:var(--paper-dim)}
+  .ro .v{font-family:var(--pixfont); font-size:calc(14*var(--u)); line-height:1.1; color:var(--paper); font-variant-numeric:tabular-nums;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ro .v.err{color:var(--red)}
+  #flags{display:flex; gap:calc(4*var(--u)); margin-top:calc(6*var(--u)); flex-wrap:wrap; min-height:calc(14*var(--u))}
+  .flag{font-family:var(--pixfont); font-size:calc(9*var(--u)); letter-spacing:.14em; text-transform:uppercase;
+    padding:calc(2*var(--u)) calc(6*var(--u)); box-shadow:inset 0 0 0 1px currentColor}
+  .flag.error{color:var(--red)} .flag.noop{color:var(--ghost)} .flag.dead{color:var(--amber)}
+  #keys{margin-top:auto; padding-top:calc(8*var(--u)); font-family:var(--finefont); font-size:calc(7.5*var(--u)); letter-spacing:.06em;
+    color:var(--paper-dim); opacity:.7; line-height:1.7}
+  #keys b{font-family:var(--pixfont); color:var(--paper); font-weight:600; letter-spacing:0}
+
+  /* right plaque: code/output panels */
+  section{padding:calc(6*var(--u)) 0 calc(8*var(--u)); border-bottom:1px solid rgba(242,232,216,.12)}
+  section h3{margin:0 0 calc(5*var(--u)); font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.13em; text-transform:uppercase;
+    color:var(--paper-dim); font-weight:600; display:flex; justify-content:space-between}
+  pre{margin:0; background:rgba(11,7,4,.6); box-shadow:inset 0 0 0 1px rgba(242,232,216,.08); border-radius:calc(3*var(--u));
+    padding:calc(7*var(--u)); font:calc(11*var(--u))/1.45 var(--mono); white-space:pre-wrap; word-break:break-word;
+    max-height:32vh; overflow:auto; color:var(--paper)}
+  pre.error{color:#ffc4bd; box-shadow:inset 0 0 0 1px rgba(224,82,58,.55)}
+  pre.empty{color:var(--paper-dim); font-style:italic}
+  pre.noop{color:var(--ghost); font-style:italic}
+  table{border-collapse:collapse; width:100%; font-family:var(--pixfont); font-size:calc(12*var(--u))}
+  th,td{text-align:left; padding:calc(2*var(--u)) calc(5*var(--u)); border-bottom:1px solid rgba(242,232,216,.1)}
+  th{color:var(--paper-dim); font-family:var(--finefont); font-weight:600; font-size:calc(8*var(--u)); letter-spacing:.1em; text-transform:uppercase}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums}
+  .muted{color:var(--paper-dim)}
+  #result .end{color:var(--paper-dim); font-size:calc(9*var(--u)); margin-top:calc(4*var(--u)); font-family:var(--finefont); letter-spacing:.06em}
+
+  /* ============================================================
+     TRANSPORT (bottom wall) — tbar buttons + speed chips over a
+     click/drag-to-seek track with step markers (error / noop / dead).
+     ============================================================ */
+  #transport{display:flex; flex-direction:column; gap:calc(5*var(--u));
+    padding:calc(8*var(--u)) calc(12*var(--u)) calc(10*var(--u)); justify-content:center;
+    background:var(--stage-lo); box-shadow:inset 0 calc(1*var(--u)) 0 rgba(242,232,216,.06)}
+  #transport.disabled{opacity:.35; pointer-events:none}
+  .tbar{display:flex; align-items:center; gap:calc(5*var(--u)); flex-wrap:wrap}
+  .tbtn{font-family:var(--pixfont); font-size:calc(11*var(--u)); color:var(--paper);
+    background:rgba(20,14,9,.55); border:none; padding:calc(5*var(--u)) calc(8*var(--u));
+    min-width:calc(26*var(--u)); cursor:pointer; line-height:1; box-shadow:0 0 calc(3*var(--u)) rgba(0,0,0,.5)}
+  .tbtn:hover{background:rgba(242,232,216,.2)}
+  .tbtn.on{color:var(--amber); box-shadow:inset 0 calc(-2*var(--u)) 0 var(--amber)}
+  .tsep{flex:1}
+  .tick-clock{font-family:var(--pixfont); font-size:calc(9*var(--u)); color:var(--paper-dim);
+    font-variant-numeric:tabular-nums; white-space:nowrap}
+  .speedchips{display:flex; gap:calc(2*var(--u))}
+  .chip{font-family:var(--pixfont); font-size:calc(9*var(--u)); color:var(--paper-dim);
+    background:rgba(20,14,9,.55); border:none; padding:calc(4*var(--u)) calc(5*var(--u)); cursor:pointer; line-height:1}
+  .chip.on{color:var(--stage-lo); background:var(--amber)}
+  .scrub{position:relative; height:calc(34*var(--u)); cursor:pointer; touch-action:none; user-select:none}
+  .scrub-track{position:absolute; left:0; right:0; top:calc(12*var(--u)); height:calc(10*var(--u));
+    background:rgba(242,232,216,.16); border-radius:calc(5*var(--u))}
+  .scrub-fill{position:absolute; left:0; top:calc(12*var(--u)); height:calc(10*var(--u));
+    background:var(--paper); width:0; border-radius:calc(5*var(--u))}
+  /* The playhead is a grabbable handle: a bright amber stem topped with a
+     round knob so it reads as draggable, not a hairline. */
+  .scrub-head{position:absolute; top:calc(8*var(--u)); width:calc(5*var(--u)); height:calc(22*var(--u));
+    background:var(--amber); transform:translateX(calc(-2.5*var(--u))); left:0; z-index:3;
+    border-radius:calc(2.5*var(--u)); box-shadow:0 0 calc(4*var(--u)) rgba(232,163,61,.55); pointer-events:none}
+  .scrub-head::before{content:''; position:absolute; left:50%; top:calc(-2*var(--u));
+    width:calc(13*var(--u)); height:calc(13*var(--u)); transform:translateX(-50%);
+    background:var(--amber); border-radius:50%; box-shadow:0 0 calc(4*var(--u)) rgba(232,163,61,.6)}
+  .scrub-key{position:absolute; right:0; top:calc(24*var(--u)); font-family:var(--finefont);
+    font-size:calc(7*var(--u)); letter-spacing:.12em; color:var(--paper-dim); opacity:.6; pointer-events:none; z-index:2;
+    text-transform:uppercase; display:flex; gap:calc(8*var(--u))}
+  .scrub-key i{display:inline-block; width:calc(2*var(--u)); height:calc(7*var(--u)); margin-right:calc(3*var(--u)); vertical-align:middle}
+  /* beat markers ride ABOVE the track; the kinds and their CSS are cogolf's
+     (see the cogolf-css block: hole / breach / illegal / fallback / killer). */
+  /* winner cap past the track's right end, colored by the verdict (draw = ghost) */
+  .scrub-win{display:none; position:absolute; right:calc(-6*var(--u)); top:calc(10*var(--u));
+    width:calc(8*var(--u)); height:calc(14*var(--u)); z-index:3; border-radius:calc(2*var(--u))}
+  .scrub-win.show{display:block; background:var(--tc, var(--paper-dim))}
+  .win-chip{display:none; font-family:var(--pixfont); font-size:calc(10*var(--u)); padding:0 calc(6*var(--u)); white-space:nowrap}
+  .win-chip.show{display:inline; color:var(--tc, var(--paper-dim))}
+  /* hover step readout above the pointer */
+  .scrub-hover{display:none; position:absolute; top:calc(-6*var(--u)); transform:translate(-50%,-100%);
+    font-family:var(--pixfont); font-size:calc(9*var(--u)); color:var(--stage-lo); background:var(--paper);
+    padding:calc(2*var(--u)) calc(5*var(--u)); border-radius:calc(2*var(--u)); pointer-events:none; z-index:4; white-space:nowrap}
+
+  /* ---------- loading plate + failure card ---------- */
+  /* "assembling factory floor" — a pulsing tile grid, pure CSS, in the ctf
+     warm-dark stage tones */
+  #loader{position:absolute; inset:0; z-index:8; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:calc(14*var(--u));
+    background:radial-gradient(120% 95% at 50% 30%, var(--stage-hi) 0%, var(--stage-lo) 55%, #100b07 100%);
+    color:var(--paper-dim); font-family:var(--finefont); font-size:calc(9*var(--u)); letter-spacing:.18em; text-transform:uppercase;
+    transition:opacity 600ms ease}
+  #loader.hide{opacity:0; pointer-events:none}
+  #loader .floor{display:grid; grid-template-columns:repeat(6, calc(14*var(--u))); gap:calc(4*var(--u))}
+  #loader .floor i{width:calc(14*var(--u)); height:calc(14*var(--u)); border-radius:2px; background:#2e2419;
+    animation:tile 1.4s ease-in-out infinite}
+  @keyframes tile{0%,100%{background:#2e2419} 50%{background:var(--amber)}}
+  @media (prefers-reduced-motion: reduce){ #loader .floor i{animation:none; background:#3a2e22} }
+  /* escalated load-failure card (ctf #status.err): wider, readable, with a
+     direct top-level link that sidesteps an embedding block. */
+  #failcard{position:absolute; z-index:9; left:50%; top:50%; transform:translate(-50%,-50%); display:none;
+    max-width:min(80%,560px); padding:15px 20px; border-radius:12px; background:var(--ink-soft);
+    font-family:var(--finefont); font-size:14px; line-height:1.5; color:var(--paper); text-align:center;
+    box-shadow:0 0 0 1px rgba(242,232,216,.08); white-space:pre-wrap; word-break:break-word}
+  #failcard.show{display:block}
+  #failcard .t{font-family:var(--pixfont); font-size:18px; color:var(--amber); margin-bottom:5px}
+  #failcard .st-sub{display:block; margin-top:5px; font-size:12px; color:var(--paper-dim); font-family:var(--mono)}
+  #failcard a{display:inline-block; margin-top:11px; color:var(--amber); text-decoration:none;
+    font-family:var(--pixfont); font-weight:600; letter-spacing:.02em}
+  #failcard a:hover{text-decoration:underline}
+
+  /* ---------- END-CARD (ctf replay_broadcast.html #endcard) ---------- */
+  #endcard{position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    gap:calc(12*var(--u)); background:radial-gradient(80% 70% at 50% 45%, rgba(16,11,7,.82), rgba(9,6,3,.95));
+    z-index:6; padding:calc(20*var(--u)); text-align:center; pointer-events:none}
+  #endcard.on{display:flex; animation:cardfade 420ms ease-out}
+  #endcard > *{pointer-events:auto}
+  @keyframes cardfade{from{opacity:0} to{opacity:1}}
+  #endcard .headline{font-family:var(--pixfont); font-size:calc(30*var(--u)); line-height:1.05; color:var(--tc, var(--paper));
+    text-shadow:0 calc(3*var(--u)) 0 var(--ink); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  #endcard .wincond{font-family:var(--pixfont); font-size:calc(10*var(--u)); letter-spacing:.22em; text-transform:uppercase;
+    color:var(--amber); padding:calc(3*var(--u)) calc(10*var(--u)); box-shadow:inset 0 0 0 1px rgba(232,163,61,.5)}
+  #endcard .how{font-family:var(--finefont); font-size:calc(11*var(--u)); letter-spacing:.05em; color:var(--paper-dim);
+    max-width:calc(360*var(--u)); margin-top:calc(-4*var(--u))}
+  #endcard .ec-teams{display:flex; gap:calc(22*var(--u)); align-items:stretch; flex-wrap:wrap; justify-content:center}
+  #endcard .ec-team{width:calc(190*var(--u)); padding:calc(9*var(--u)) calc(12*var(--u)); background:rgba(20,14,9,.55);
+    box-shadow:inset 0 0 0 1px rgba(242,232,216,.12); display:flex; flex-direction:column; gap:calc(5*var(--u)); text-align:left}
+  #endcard .ec-team.win{box-shadow:inset 0 0 0 1px rgba(232,163,61,.65), 0 0 calc(14*var(--u)) rgba(232,163,61,.18)}
+  #endcard .ec-tname{font-family:var(--pixfont); font-size:calc(13*var(--u)); letter-spacing:.05em; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; color:var(--tc, var(--paper))}
+  #endcard .ec-lives{display:flex; align-items:baseline; gap:calc(6*var(--u)); font-family:var(--pixfont)}
+  #endcard .fl-num{font-size:calc(22*var(--u)); color:var(--tc, var(--paper)); font-variant-numeric:tabular-nums}
+  #endcard .fl-cap{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.14em; text-transform:uppercase; color:var(--paper-dim)}
+  #endcard .ec-thead,#endcard .ec-row{display:grid; grid-template-columns:1fr calc(34*var(--u)); gap:calc(5*var(--u)); align-items:center}
+  #endcard .ec-thead{font-family:var(--finefont); font-size:calc(7.5*var(--u)); letter-spacing:.12em; text-transform:uppercase;
+    color:var(--paper-dim); border-bottom:1px solid rgba(242,232,216,.18); padding-bottom:calc(3*var(--u))}
+  #endcard .ec-thead span:not(:first-child){text-align:right}
+  #endcard .ec-row{font-family:var(--pixfont); font-size:calc(10.5*var(--u)); color:var(--paper); padding:calc(1.5*var(--u)) 0}
+  #endcard .ec-row .n{text-align:right; font-variant-numeric:tabular-nums}
+  #endcard .ec-row .pname{color:var(--paper-dim)}
+  #endcard .ec-replay{font-family:var(--finefont); font-size:calc(9*var(--u)); letter-spacing:.2em; text-transform:uppercase;
+    color:var(--paper-dim); min-height:calc(12*var(--u))}
+  #endcard .ec-replay b{color:var(--paper); font-variant-numeric:tabular-nums}
+</style>
+
+<!-- =========================================================================
+     cogolf additions to the inherited cogame-factorio chrome
+     ========================================================================= -->
+<style id="cogolf-css">
+  /* The transport band is the page's own grid row and NOTHING is overlaid on
+     it: #scroll, #feed, #tooltip, #status, #loader, #failcard and #endcard all
+     live inside #stage (grid row 3). relayout() publishes the measured band
+     height as --band and the resolved ?hud= multiplier as --hudscale on :root. */
+  :root{ --band:0px; --hudscale:1 }
+
+  /* the spec scroll: an HTML overlay pinned over the parchment the renderer
+     bakes, so the text is crisp at any size */
+  #scroll{position:absolute; left:5%; right:5%; top:calc(6*var(--u)); z-index:4;
+    pointer-events:none; text-align:center; color:var(--ink);
+    text-shadow:0 1px 0 rgba(255,255,255,.35)}
+  #scroll .title{font-family:var(--pixfont); font-size:calc(19*var(--u)); line-height:1.05;
+    letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  #scroll .prompt{font-family:var(--finefont); font-size:calc(9.5*var(--u)); line-height:1.35;
+    margin-top:calc(2*var(--u)); max-height:calc(34*var(--u)); overflow:hidden;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+  #scroll .amb{display:none; font-family:var(--finefont); font-size:calc(8.5*var(--u));
+    margin-top:calc(2*var(--u)); color:#5d4a33}
+  #scroll.spoiled .amb{display:block}
+
+  /* the beat feed: the last four beats, one line each (bottom-left of the
+     stage). viewer_smoke.mjs counts lines from this id. */
+  #feed{position:absolute; left:calc(8*var(--u)); bottom:calc(8*var(--u)); z-index:4;
+    display:flex; flex-direction:column; gap:calc(2*var(--u)); pointer-events:none;
+    max-width:min(64%, calc(520*var(--u)))}
+  #feed .line{font-family:var(--pixfont); font-size:calc(10.5*var(--u)); line-height:1.25;
+    color:var(--paper); background:rgba(20,14,9,.72); border-radius:calc(3*var(--u));
+    padding:calc(3*var(--u)) calc(7*var(--u)); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; box-shadow:inset 0 0 0 1px rgba(242,232,216,.10)}
+  #feed .line.breach{box-shadow:inset 0 0 0 1px rgba(224,82,58,.65); color:#ffc9bf}
+  #feed .line.held{color:var(--paper-dim)}
+  #feed .line.illegal{color:var(--ghost); font-style:italic}
+  #feed .line.hole{color:var(--amber)}
+  #feed .line.fallback{color:var(--yellow)}
+
+  /* the right plaque's cogolf section: spec prompt, the seat's impl, its tests */
+  #cogolf-plaque .spec{font-family:var(--finefont); font-size:calc(10*var(--u)); line-height:1.45;
+    white-space:pre-wrap; color:var(--paper); max-height:26vh; overflow:auto}
+  #cogolf-plaque .amb{margin-top:calc(4*var(--u)); font-size:calc(9*var(--u)); color:var(--amber)}
+  #tests td.v{font-family:var(--pixfont)}
+  #tests td.v.breach{color:var(--red)} #tests td.v.held{color:var(--green)}
+  #tests td.v.illegal{color:var(--ghost)}
+  #tests td.args{font:calc(10*var(--u))/1.35 var(--mono); word-break:break-all}
+  #tests td.why{color:var(--paper-dim); font-family:var(--finefont); font-size:calc(9*var(--u))}
+  #par-line{font-family:var(--pixfont); font-size:calc(12*var(--u)); margin-top:calc(4*var(--u))}
+  #par-line b{color:var(--amber)}
+
+  /* scrubber beats are labelled, clickable BUTTONS, with CSS for every kind
+     the writer emits: hole, breach, illegal, fallback, killer. */
+  .beat-marker{position:absolute; top:calc(2*var(--u)); width:calc(2*var(--u));
+    height:calc(10*var(--u)); transform:translateX(-1px); z-index:2; padding:0; border:0;
+    background:var(--ghost); cursor:pointer; border-radius:calc(1*var(--u))}
+  .beat-marker:focus-visible{outline:2px solid var(--paper); outline-offset:1px}
+  .beat-marker.hole{background:var(--paper); opacity:.85; height:calc(13*var(--u)); top:0}
+  .beat-marker.breach{background:var(--red)}
+  .beat-marker.illegal{background:var(--ghost); height:calc(6*var(--u)); top:calc(6*var(--u)); opacity:.75}
+  .beat-marker.fallback{background:var(--yellow)}
+  .beat-marker.killer{background:var(--amber); width:calc(3.5*var(--u)); height:calc(15*var(--u)); top:0;
+    box-shadow:0 0 calc(5*var(--u)) rgba(232,163,61,.8)}
+
+  /* THE ENDCARD STOPS AT THE TRANSPORT BAND, and every seek dismisses it. */
+  #endcard{inset:0 0 var(--band) 0}
+  #endcard .killer{font-family:var(--mono); font-size:calc(10*var(--u)); color:var(--paper-dim);
+    max-width:calc(420*var(--u))}
+  #endcard .killer b{font-family:var(--pixfont); color:var(--paper)}
+
+  /* LEGIBILITY AT 360 px (the featured-match iframe width): the name is the
+     only part that gives, and it ellipsizes instead of collapsing to "…". */
+  .plate-name{flex:1 1 auto; min-width:3.2em}
+  .seatchip .sub{font-family:var(--finefont); font-size:calc(8*var(--u)); letter-spacing:.1em;
+    text-transform:uppercase; color:var(--paper-dim); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; min-width:0}
+  .seatchip .delta{font-family:var(--pixfont); font-size:calc(11*var(--u)); color:var(--paper-dim)}
+  .seatchip .delta.up{color:var(--green)} .seatchip .delta.down{color:var(--red)}
+  @media (max-width: 720px){ #main{--col-r:var(--tab)} .plaque-col.right-col .plaque{display:none} }
+  @media (max-width: 640px){
+    .ro .k, .wallsub, .scrub-key, #stepro .who, .seatchip .rk, .seatchip .sub{display:none}
+    #scroll .prompt{-webkit-line-clamp:1}
+    #feed{max-width:88%}
+  }
+</style>
+</head>
+<body>
+<div id="banner" role="alert"></div>
+
+<!-- top wall: task headline left, step clock centered, seat score chips right -->
+<div id="scorebug" class="hud">
+  <div class="wallnames side-l">
+    <div class="wallrow">
+      <div class="wallname" id="task-key">COGOLF</div>
+      <span class="hcap" id="gver" title="replay game_version">v —</span>
+    </div>
+    <div class="wallsub" id="task" title=""><span class="muted">loading …</span></div>
+  </div>
+  <div class="clock amb" id="clock">
+    <div class="time" id="clock-time">—</div>
+    <div class="caption" id="clock-caption">Loading replay</div>
+  </div>
+  <div id="stepro" title="this hole, selected seat">
+    <div class="who">this hole<b id="ro-seat">—</b></div>
+    <div class="ro"><div class="k">shots</div><div class="v" id="ro-shots">—</div></div>
+    <div class="ro"><div class="k">breach</div><div class="v" id="ro-breach">—</div></div>
+    <div class="ro"><div class="k">held</div><div class="v" id="ro-held">—</div></div>
+    <div class="ro"><div class="k">illegal</div><div class="v" id="ro-illegal">—</div></div>
+    <div class="ro"><div class="k">par ✗</div><div class="v" id="ro-par">—</div></div>
+    <div id="flags"></div>
+  </div>
+  <div id="seatchips"></div>
+</div>
+
+<div id="main">
+  <div id="stage">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="status">loading …</div>
+    <div id="tooltip"></div>
+    <!-- cogolf additions to the inherited cogame-factorio chrome -->
+    <div id="scroll"><div class="title" id="scroll-title">—</div><div class="prompt" id="scroll-prompt"></div><div class="amb" id="scroll-amb"></div></div>
+    <div id="feed" aria-live="polite"></div>
+    <div id="endcard" aria-live="polite">
+      <div class="headline" id="ec-headline">—</div>
+      <div class="wincond" id="ec-wincond"></div>
+      <div class="how" id="ec-how"></div>
+      <div class="ec-teams" id="ec-teams"></div>
+      <div class="ec-replay" id="ec-replay"></div>
+    </div>
+    <div id="failcard" role="alert"></div>
+    <div id="loader" role="status" aria-live="polite">
+      <div class="floor" aria-hidden="true"></div>
+      <div id="loader-text">assembling factory floor …</div>
+    </div>
+  </div>
+
+  <div class="plaque-col hud right-col" id="col-r">
+    <button class="pane-tab" id="tab-r" type="button" title="collapse / expand the program pane (p)" aria-label="toggle program pane" aria-expanded="true">›</button>
+    <div class="plaque right" id="plaque-r">
+      <!-- cogolf additions to the inherited cogame-factorio chrome -->
+      <section id="cogolf-plaque">
+        <h3><span>spec</span><span id="spec-meta" class="muted"></span></h3>
+        <div class="spec" id="spec-text">—</div>
+        <div class="amb" id="spec-amb"></div>
+        <h3 style="margin-top:calc(8*var(--u))"><span>implementation</span><span id="code-meta" class="muted"></span></h3>
+        <pre id="code" class="empty">—</pre>
+        <h3 style="margin-top:calc(8*var(--u))"><span>tests fired</span><span id="out-meta" class="muted"></span></h3>
+        <table id="tests"></table>
+        <div id="par-line" class="muted">—</div>
+      </section>
+      <section id="result"><h3>final result</h3><div id="result-body" class="muted">—</div></section>
+      <div id="keys"><b>space</b> play · <b>←</b>/<b>→</b> beat · <b>,</b>/<b>.</b> −5/+5 · <b>home</b>/<b>end</b> · <b>[</b>/<b>]</b> seat · <b>1</b>–<b>5</b> speed · <b>o</b> spoilers · <b>p</b> pane</div>
+    </div>
+  </div>
+</div>
+
+<div id="transport" class="hud disabled">
+  <div class="tbar">
+    <button class="tbtn" id="btn-restart" title="Restart (home / ,)">⟲</button>
+    <button class="tbtn" id="btn-back" title="Back one beat (←)">◂|</button>
+    <button class="tbtn" id="btn-play" title="Play / pause (space)">▶</button>
+    <button class="tbtn" id="btn-fwd" title="Forward one beat (→)">|▸</button>
+    <button class="tbtn" id="btn-skip5" title="Skip +5 beats (.)">+5</button>
+    <button class="tbtn" id="btn-end" title="Jump to end (end / e)">▸▸|</button>
+    <button class="tbtn" id="btn-spoilers" title="Spoilers: breach/illegal/fallback markers, scores and the verdict ahead of the playhead (o)">spoilers</button>
+    <span class="win-chip" id="win-chip"></span>
+    <span class="tick-clock" id="tick-clock">beat 0 / 0</span>
+    <span class="tsep"></span>
+    <div class="speedchips" id="speedchips"></div>
+  </div>
+  <div class="scrub" id="scrub">
+    <div class="scrub-track"></div>
+    <div class="scrub-fill" id="scrub-fill"></div>
+    <div class="scrub-key" aria-hidden="true"><span><i style="background:var(--paper)"></i>hole</span><span><i style="background:var(--red)"></i>breach</span><span><i style="background:var(--ghost)"></i>illegal</span><span><i style="background:var(--yellow)"></i>fallback</span><span><i style="background:var(--amber)"></i>killer</span></div>
+    <div class="scrub-win" id="scrub-win"></div>
+    <div class="scrub-head" id="scrub-head"></div>
+    <div class="scrub-hover" id="scrub-hover"></div>
+  </div>
+</div>
+
+<script src="./replay_doc.js"></script>
+<script src="./chrome_common.js"></script>
+<script src="./static_replay.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const RD = window.ReplayDoc;
+const PAGE_T0 = performance.now();
+
+// ---- boot state machine ------------------------------------------------------
+// loading -> boot (wasm instantiated) -> ready (replay parsed + first frame)
+// or failed. Mirrored on <body data-state> for tests/embedding shells.
+const params = new URLSearchParams(location.search);
+const REPLAY_URL = params.get("replay") || "/replay-data";
+const EMBEDDED = window.parent && window.parent !== window;
+const LOADER_MIN_DWELL_MS = 900;
+const FAIL_NO_DATA_MS = 12000;
+const FAIL_STUCK_MS = 45000;
+let bootState = "loading";
+function setBootState(st) { bootState = st; document.body.dataset.state = st; }
+setBootState("loading");
+
+// ---- error surface -------------------------------------------------------
+// The wasm runtime lives in the Worker (static_replay_worker.js); its stage
+// note arrives with a failure message rather than being polled here.
+let lastWorkerStage = "";
+function stageNote() { return lastWorkerStage || (core ? "worker running" : "(worker not started)"); }
+function showError(prefix, e) {
+  const msg = (e && e.stack) ? `${e.message}\n${e.stack}` : String(e && e.message || e);
+  const b = $("banner");
+  b.textContent = `${prefix}: ${msg}`;
+  b.classList.add("show");
+  showStatus(prefix);
+  $("loader").classList.add("hide");
+  setBootState("failed");
+  console.error(prefix, e);
+}
+function showFailCard(title, lines, withLink) {
+  const c = $("failcard");
+  c.textContent = "";
+  const t = document.createElement("div"); t.className = "t"; t.textContent = title; c.appendChild(t);
+  for (const l of lines) { const d = document.createElement("span"); d.className = "st-sub"; d.textContent = l; c.appendChild(d); }
+  if (withLink) {
+    const a = document.createElement("a");
+    a.href = REPLAY_URL; a.target = "_top"; a.rel = "noopener";
+    a.textContent = "Open the replay JSON directly →";
+    c.appendChild(a);
+  }
+  c.classList.add("show");
+  $("loader").classList.add("hide");
+  hideStatus();
+}
+function showStatus(t) { const el = $("status"); el.textContent = t; el.classList.add("show"); }
+function hideStatus() { $("status").classList.remove("show"); }
+window.addEventListener("error", (ev) => showError("uncaught error", ev.error || ev.message));
+window.addEventListener("unhandledrejection", (ev) => showError("unhandled rejection", ev.reason));
+
+// Two-stage load-failure escalation: 12 s with no data names what was
+// attempted; once the wasm has booted (Worker 'boot' message, or the Worker
+// merely started), the no-data timer is re-armed to 45 s and a "stuck" card
+// takes over. Any card is dismissed the moment a frame arrives (a late frame
+// fully recovers the UI: see onFirstFrame / clearFailCard).
+let noDataTimer = null;
+let wasmBooted = false;
+let timeoutCardShown = false;   // a no-data / stuck card (recoverable by a frame)
+function noDataCard() {
+  if (bootState !== "loading") return;
+  timeoutCardShown = true;
+  showFailCard("Replay didn’t load", [
+    `no replay data after ${Math.round((core ? FAIL_STUCK_MS : FAIL_NO_DATA_MS) / 1000)} s`,
+    `attempted: ${REPLAY_URL}`,
+    `wasm: ${window.CogolfStaticReplay ? (core ? (wasmBooted ? "worker booted" : "worker started") : "static_replay.js loaded, worker not started") : "static_replay.js not loaded"}`,
+    `stage: ${stageNote()}`,
+  ], true);
+}
+function armNoDataTimer(ms) {
+  if (noDataTimer) clearTimeout(noDataTimer);
+  noDataTimer = setTimeout(() => { noDataTimer = null; noDataCard(); }, ms);
+}
+armNoDataTimer(FAIL_NO_DATA_MS);
+function onWorkerBoot() {
+  // wasm instantiated / worker running: escalate to the long timeout
+  if (wasmBooted) return;
+  wasmBooted = true;
+  lastWorkerStage = lastWorkerStage || "wasm booted";
+  if (bootState === "loading") {
+    clearFailCard();
+    armNoDataTimer(FAIL_STUCK_MS);
+  }
+}
+function armStuckTimer() {
+  setTimeout(() => {
+    // a hidden tab gets no animation frames, so "not ready" is expected
+    // there: re-arm instead of crying wolf
+    if (document.hidden && bootState !== "failed") { armStuckTimer(); return; }
+    if (bootState !== "ready" && bootState !== "failed") {
+      timeoutCardShown = true;
+      showFailCard("Viewer stuck", [
+        `wasm booted but never became ready after ${Math.round(FAIL_STUCK_MS / 1000)} s (state ${bootState})`,
+        `replay: ${REPLAY_URL}${replay ? " (parsed)" : " (not parsed)"}`,
+        `frames rendered: ${core ? core.getPaceStats().draws : 0}`,
+        `stage: ${stageNote()}`,
+      ], true);
+    }
+  }, FAIL_STUCK_MS);
+}
+// A frame arrived: whatever timeout card was showing is stale. Clear it and
+// the failed state so the board takes over.
+function clearFailCard() {
+  timeoutCardShown = false;
+  const c = $("failcard");
+  c.classList.remove("show");
+  c.textContent = "";
+  $("banner").classList.remove("show");
+  if (bootState === "failed") setBootState(core && replay ? "boot" : "loading");
+}
+
+// ---- state ---------------------------------------------------------------
+// cogolf additions to the inherited cogame-factorio chrome: the timeline unit
+// is a BEAT (one entry of replay.events) rather than a per-seat step, and the
+// board is a fixed 40x22-tile arena, so the camera (fit / follow / zoom /
+// minimap) is gone with it.
+let replay = null;        // validated replay document
+let core = null;          // CogolfStaticReplay worker core (board renderer)
+let board = null;         // {tile,w,h} from the renderer's chrome JSON
+let seat = 0;             // selected seat (which plaque + readout is shown)
+let beatIdx = 0;          // selected beat index within replay.events
+let playing = false;
+const BASE_BEAT_MS = 700; // 1× pace (ms per beat)
+let speed = 1;            // multiplier from ChromeCommon.SPEEDS
+let lastAdvance = 0;
+let firstFrameSeen = false;
+let killerIdx = -1;
+
+// Shared replay chrome (ported from coworld-ctf chrome_common.js). Loaded
+// via a script src next to this page; a missing file fails loud and early.
+if (!window.ChromeCommon) throw new Error("chrome_common.js did not load (window.ChromeCommon missing)");
+const C = window.ChromeCommon({
+  getState: () => replay ? { idx: beatIdx, n: replay.events.length, playing, speed } : null,
+  seek: (i) => selectBeat(i),
+  setPlaying: (p) => setPlaying(p),
+  setSpeed: (v) => { speed = v; renderTransport(); },
+  onSpoilers: () => { if (!replay) return; syncVerdictChip(); renderHeader(); renderScroll(); renderResult(); renderBeatPanels(); applyBeatSpoilers(); },
+});
+const stripSeatSuffix = C.stripSeatSuffix, teamHeadline = C.teamHeadline, esc = C.esc;
+const getSpoilers = C.getSpoilers, setSpoilers = C.setSpoilers;
+// spoiled = final scores / winner visible? Flips on permanently once the end
+// card has been shown (the viewer has now seen the ending).
+let spoiled = getSpoilers();
+function spoilersOn() { return spoiled || getSpoilers(); }
+
+const fmtNum = (v, d = 1) => (v === null || v === undefined) ? "—"
+  : (Number.isInteger(v) ? String(v) : Number(v).toFixed(d));
+const signed = (v) => (v > 0 ? "+" : "") + v;
+// The platform injects " (N)" seat suffixes for same-policy seats.
+const displayName = (n) => stripSeatSuffix(n).replace(/_/g, " ").trim();
+// TWO NAME SPACES: the alias is what the policies saw (and all a policy ever
+// sees); the real player name is spectator-side only.
+const seatAlias = (i) => (replay.aliases[i] || `seat ${i}`);
+const seatName = (i) => displayName(replay.names[i] || "") || `seat ${i}`;
+const seatCls = (i) => "seat" + (i % 8);
+
+// ---- board core glue ------------------------------------------------------
+// The board is drawn by replay-viewer/cogolf_replay.nim (wasm) inside a Worker
+// on an OffscreenCanvas, streamed as Bitworld sprite packets that
+// broadcast_core.js composites. The page owns the timeline and tells the
+// renderer which beat to draw with the text-command channel: `b:<beat>`. The
+// renderer answers with chrome JSON (sprite 4090) carrying the board geometry.
+function events() { return replay.events; }
+function beatCount() { return replay.events.length; }
+function currentBeat() { return replay.events[Math.min(beatIdx, beatCount() - 1)]; }
+function isLastBeat() { return beatIdx >= beatCount() - 1; }
+function state() { return RD.stateAt(replay, beatIdx); }
+function currentHole() {
+  const st = state();
+  return st.holeIndex >= 0 ? replay.holes[st.holeIndex] : null;
+}
+
+function pushBeat() { if (core) core.sendCommand(`b:${beatIdx}`); }
+
+function onCoreText(text) {
+  let msg;
+  try { msg = JSON.parse(text); } catch (e) { return; }
+  if (!msg || msg.kind !== "cogolf" || !msg.board) return;
+  board = msg.board;
+}
+
+// ---- collapsible program plaque ---------------------------------------------
+// The right plaque folds down to a tab on its stage edge (click, or p). The
+// state persists in localStorage; ?panes=0 starts folded (the Observatory
+// theater embed wants the whole pit for the board).
+const PANES_KEY = "cogolf-replay.panes";
+const panes = { right: true };
+(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANES_KEY) || "null");
+    if (saved && typeof saved === "object" && typeof saved.right === "boolean") panes.right = saved.right;
+  } catch (e) {}
+  if (!C.uiToggle("panes", true)) panes.right = false;
+})();
+function applyPanes(persist) {
+  $("main").dataset.right = panes.right ? "1" : "0";
+  $("col-r").classList.toggle("collapsed", !panes.right);
+  $("tab-r").setAttribute("aria-expanded", String(panes.right));
+  $("tab-r").textContent = panes.right ? "\u203a" : "\u2039";
+  if (persist) { try { localStorage.setItem(PANES_KEY, JSON.stringify(panes)); } catch (e) {} }
+}
+function togglePane() {
+  panes.right = !panes.right;
+  applyPanes(true);
+  // the stage ResizeObserver pushes the new viewport to the core
+  requestAnimationFrame(() => { if (core) core.setViewportFit(); });
+}
+$("tab-r").addEventListener("click", togglePane);
+applyPanes(false);
+
+// ---- the scrubber's beat buttons --------------------------------------------
+// cogolf additions to the inherited cogame-factorio chrome: a beat marker is
+// a real, labelled, clickable <button> (the inherited chrome's marker layer
+// draws decorative divs), so the page owns this one layer. Everything else on
+// the transport — the fill, the playhead, the tick clock, the speed chips, the
+// verdict cap, drag/hover scrubbing and the [spoilers] toggle — is
+// chrome_common.js, byte for byte.
+let beatButtons = [];
+function renderBeatButtons() {
+  const host = $("scrub");
+  beatButtons.forEach((b) => b.remove());
+  beatButtons = [];
+  const n = beatCount();
+  const span = Math.max(1, n - 1);
+  beatMarkers().forEach((m) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "beat-marker " + m.kind;
+    b.style.left = (Math.min(1, Math.max(0, m.idx / span)) * 100) + "%";
+    b.title = m.title;
+    b.setAttribute("aria-label", m.title);
+    b.dataset.beat = String(m.idx);
+    b.addEventListener("click", (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      setPlaying(false);
+      selectBeat(m.idx);
+    });
+    host.appendChild(b);
+    beatButtons.push(b);
+  });
+  applyBeatSpoilers();
+}
+function applyBeatSpoilers() {
+  // with [spoilers] off, beats AHEAD of the playhead are held back
+  const show = spoilersOn();
+  beatButtons.forEach((b) => {
+    const hide = !show && Number(b.dataset.beat) > beatIdx;
+    b.style.display = hide ? "none" : "";
+  });
+}
+
+// ---- scores at the playhead ---------------------------------------------------
+// With spoilers on a seat's chip shows its FINAL score; with spoilers off it
+// shows the score at the playhead, so the standings update as playback goes.
+function scoreAt(i) {
+  if (spoilersOn()) return { score: replay.result.scores[i], final: true };
+  return { score: state().cumulative[i], final: false };
+}
+function ranking() {
+  const rows = replay.names.map((_, i) => ({ i, ...scoreAt(i) }));
+  rows.sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity) || a.i - b.i);
+  return rows;
+}
+
+// ---- UI: header (scorebug), seat chips ------------------------------------------
+function renderHeader() {
+  const st = state();
+  C.setName("task-key", "COGOLF");
+  const el = $("task");
+  const hole = currentHole();
+  const line = hole ? `${hole.spec.title} — ${replay.deck}/${replay.deck_version}`
+    : `deck ${replay.deck} · seed ${replay.seed}`;
+  el.textContent = line;
+  el.title = line;
+  const gv = $("gver");
+  const legacy = replay.game_version === undefined || replay.game_version === null;
+  gv.textContent = legacy ? "legacy" : `game ${replay.game_version}`;
+  gv.classList.toggle("legacy", legacy);
+  gv.title = legacy ? "replay has no game_version (legacy)" : "replay game_version";
+  // seat chips, in rank order; click = select the seat (whose plaque shows)
+  const host = $("seatchips");
+  const rows = ranking();
+  const best = rows.length && rows[0].score !== null ? rows[0].score : null;
+  const leaderOnly = rows.length > 1 && best !== null && rows[1].score !== best;
+  if (host.childElementCount !== replay.names.length) {
+    host.textContent = "";
+    replay.names.forEach(() => {
+      const btn = document.createElement("button");
+      const rk = document.createElement("span"); rk.className = "rk";
+      const who = document.createElement("span"); who.className = "nm plate-name";
+      const sub = document.createElement("span"); sub.className = "sub";
+      const sc = document.createElement("span"); sc.className = "sc";
+      const dl = document.createElement("span"); dl.className = "delta";
+      btn.appendChild(rk); btn.appendChild(who); btn.appendChild(sub);
+      btn.appendChild(sc); btn.appendChild(dl);
+      btn.addEventListener("click", () => selectSeat(Number(btn.dataset.seat)));
+      host.appendChild(btn);
+    });
+  }
+  const holeScore = hole ? hole.hole_score : null;
+  rows.forEach((r, pos) => {
+    const btn = host.children[pos];
+    btn.className = "seatchip " + seatCls(r.i) + (r.i === seat ? " active" : "");
+    btn.dataset.seat = String(r.i);
+    btn.title = `${seatAlias(r.i)} — played by ${seatName(r.i)}`;
+    btn.children[0].textContent = "#" + (pos + 1);
+    // ALIAS big (what the policy saw), real player name small underneath
+    btn.children[1].textContent = seatAlias(r.i).toUpperCase();
+    btn.children[1].title = seatAlias(r.i);
+    btn.children[2].textContent = seatName(r.i);
+    btn.children[2].title = seatName(r.i);
+    const sc = btn.children[3];
+    sc.textContent = r.score === null || r.score === undefined ? "· · ·" : signed(r.score);
+    sc.classList.toggle("hidden", r.score === null || r.score === undefined);
+    const dl = btn.children[4];
+    const delta = holeScore && !spoilersOn() ? holeScore[r.i] : null;
+    dl.textContent = delta === null || delta === undefined ? "" : signed(delta);
+    dl.className = "delta" + (delta > 0 ? " up" : delta < 0 ? " down" : "");
+    btn.classList.toggle("leader", leaderOnly && r.score === best && r.final);
+  });
+}
+
+// ---- UI: clock + transport ------------------------------------------------------
+function renderClock() {
+  const st = state();
+  const timeEl = $("clock-time"), capEl = $("clock-caption"), clk = $("clock");
+  clk.classList.remove("amb");
+  if (!beatCount()) { timeEl.textContent = "—"; capEl.textContent = "No beats recorded"; return; }
+  if (st.done) {
+    timeEl.textContent = "FINAL";
+    capEl.textContent = endShown && endCountdown > 0 ? `Replaying in ${endCountdown}s` : "Match complete";
+    clk.classList.remove("tiebreak-warn");
+  } else {
+    timeEl.textContent = `HOLE ${st.hole || 1} / ${replay.config.holes || replay.holes.length}`;
+    capEl.textContent = st.title || st.specKey || "Hole";
+    clk.classList.toggle("tiebreak-warn", st.hole >= (replay.holes.length || 1));
+  }
+}
+function renderTransport() {
+  C.renderTransport({ idx: beatIdx, n: beatCount(), playing, speed });
+  $("tick-clock").textContent = `beat ${beatCount() ? beatIdx + 1 : 0} / ${beatCount()}`;
+  applyBeatSpoilers();
+  renderClock();
+}
+// Scrubber beats are labelled, clickable buttons — CSS exists for every kind
+// this writer emits (hole, breach, illegal, fallback, killer).
+function beatMarkers() {
+  const out = [];
+  events().forEach((ev, i) => {
+    const kind = RD.markerKind(ev, i, killerIdx);
+    if (kind) out.push({ idx: i, kind, title: RD.beatText(replay, ev) });
+  });
+  return out;
+}
+
+// ---- UI: the stage overlays (scroll + feed) -------------------------------------
+function renderScroll() {
+  const hole = currentHole();
+  const st = state();
+  if (!hole) {
+    $("scroll-title").textContent = replay.deck ? `DECK ${replay.deck.toUpperCase()}` : "COGOLF";
+    $("scroll-prompt").textContent = "";
+    $("scroll-amb").textContent = "";
+    return;
+  }
+  $("scroll-title").textContent = `HOLE ${hole.hole} — ${hole.spec.title}`;
+  $("scroll-prompt").textContent = hole.spec.prompt.replace(/\s+/g, " ");
+  $("scroll-amb").textContent = hole.spec.ambiguity || "";
+  $("scroll").classList.toggle("spoiled", spoilersOn());
+}
+const FEED_LINES = 4;
+function feedClass(ev) {
+  if (ev.kind === "hole_start") return "hole";
+  if (ev.kind === "submission") return ev.fallback ? "fallback" : "";
+  if (ev.kind === "test_verdict") return ev.outcome;
+  return "";
+}
+function renderFeed() {
+  const host = $("feed");
+  host.textContent = "";
+  const from = Math.max(0, beatIdx - FEED_LINES + 1);
+  for (let i = from; i <= beatIdx && i < beatCount(); i++) {
+    const ev = events()[i];
+    const div = document.createElement("div");
+    div.className = "line " + feedClass(ev);
+    div.textContent = RD.beatText(replay, ev);
+    host.appendChild(div);
+  }
+}
+
+// ---- UI: readouts + the right plaque --------------------------------------------
+function renderBeatPanels() {
+  const st = state();
+  const hole = currentHole();
+  $("ro-seat").textContent = seatAlias(seat);
+  $("stepro").className = seatCls(seat);
+  const ro = RD.seatReadout(st, seat);
+  $("ro-shots").textContent = String(ro.shots);
+  $("ro-breach").textContent = String(ro.breach);
+  $("ro-held").textContent = String(ro.held);
+  $("ro-illegal").textContent = String(ro.illegal);
+  $("ro-par").textContent = ro.par === null ? "—" : `${ro.par}/${hole ? hole.seats[seat].par_total : 4}`;
+  const flags = $("flags"); flags.textContent = "";
+  const flag = (cls, text) => { const f = document.createElement("span"); f.className = "flag " + cls; f.textContent = text; flags.appendChild(f); };
+  if (st.fallback[seat]) flag("noop", `fallback: ${st.fallback[seat].cause}`);
+  if (hole && hole.seats[seat].broken) flag("error", "impl broken");
+
+  // the plaque: the spec in full, this seat's implementation, its test table
+  if (!hole) {
+    $("spec-text").textContent = "(the match has not teed off yet)";
+    $("spec-amb").textContent = "";
+    $("spec-meta").textContent = "";
+    $("code").textContent = "—"; $("code").className = "empty";
+    $("code-meta").textContent = "";
+    $("tests").textContent = "";
+    $("par-line").textContent = "—";
+    return;
+  }
+  const seatDoc = hole.seats[seat];
+  $("spec-text").textContent = hole.spec.prompt;
+  $("spec-meta").textContent = `${hole.spec.key} · hole ${hole.hole}`;
+  $("spec-amb").textContent = spoilersOn() && hole.spec.ambiguity
+    ? `reference: ${hole.spec.ambiguity}` : "";
+  const code = $("code");
+  code.textContent = seatDoc.impl || "(no implementation)";
+  code.className = seatDoc.broken ? "error" : "";
+  $("code-meta").textContent = `${seatDoc.impl_lines} lines` +
+    (seatDoc.fallback ? ` · ${seatDoc.fallback.baseline} fallback` : "") +
+    (seatDoc.broken ? " · BROKEN" : "");
+  const fired = st.shots[seat] || [];
+  const table = $("tests");
+  table.textContent = "";
+  const head = document.createElement("tr");
+  for (const [label, cls] of [["test", ""], ["args → expect", ""], ["verdict", ""], ["why", ""]]) {
+    const th = document.createElement("th"); th.className = cls; th.textContent = label; head.appendChild(th);
+  }
+  table.appendChild(head);
+  fired.forEach((shot) => {
+    const tr = document.createElement("tr");
+    const a = document.createElement("td"); a.textContent = shot.name;
+    const b = document.createElement("td"); b.className = "args";
+    b.textContent = `${JSON.stringify(shot.args)} → ${JSON.stringify(shot.expect)}`;
+    const c = document.createElement("td"); c.className = "v " + shot.outcome;
+    c.textContent = shot.outcome === "illegal" ? `illegal (${shot.legal_reason})` : shot.outcome;
+    const d = document.createElement("td"); d.className = "why"; d.textContent = shot.why || "";
+    tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tr.appendChild(d);
+    table.appendChild(tr);
+  });
+  const par = st.par[seat];
+  $("par-line").textContent = "";
+  $("par-line").appendChild(document.createTextNode("hidden audit: "));
+  const bold = document.createElement("b");
+  bold.textContent = par === null ? "pending" : `${par} / ${seatDoc.par_total} failed`;
+  $("par-line").appendChild(bold);
+  $("out-meta").textContent = `${fired.length} fired`;
+}
+
+function renderResult() {
+  const r = replay.result;
+  const body = $("result-body"); body.textContent = "";
+  if (!spoilersOn()) { body.textContent = "(hidden until the end — spoilers off)"; return; }
+  if (!r || typeof r !== "object") { body.textContent = "(no result in replay)"; return; }
+  const rows = [
+    ["score", r.scores, 0], ["breaches", r.breaches, 0],
+    ["breached", r.breaches_taken, 0], ["par fails", r.par_fails, 0],
+    ["tests fired", r.tests_fired, 0], ["illegal", r.illegal_tests, 0],
+    ["fallbacks", r.fallbacks, 0],
+  ];
+  const t = document.createElement("table");
+  const hr = document.createElement("tr");
+  hr.appendChild(document.createElement("th"));
+  replay.aliases.forEach((al, i) => {
+    const th = document.createElement("th"); th.className = "num";
+    th.textContent = al; th.title = seatName(i); hr.appendChild(th);
+  });
+  t.appendChild(hr);
+  for (const [label, arr, d] of rows) {
+    if (!Array.isArray(arr)) continue;
+    const tr = document.createElement("tr");
+    const th = document.createElement("th"); th.textContent = label; tr.appendChild(th);
+    replay.aliases.forEach((_, i) => {
+      const td = document.createElement("td"); td.className = "num";
+      const v = arr[i];
+      td.textContent = v === null || v === undefined ? "—" : fmtNum(v, d);
+      tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  }
+  body.appendChild(t);
+  const end = document.createElement("div"); end.className = "end";
+  const parts = [`${r.holes_played} holes`, `end ${r.reason}`,
+    `seed ${r.seed}`, `${fmtNum(r.wall_clock_seconds, 0)} s wall`];
+  end.textContent = parts.join(" · ");
+  body.appendChild(end);
+}
+
+// ---- end-of-match card ---------------------------------------------------------
+// Shown over the stage (never over the transport band: #endcard stops at
+// var(--band)) when the playhead reaches the last beat; EVERY seek dismisses it.
+const END_COUNTDOWN_S = 10;
+let endShown = false, endVerdictKey = "", endCountdown = 0, endTimer = null;
+
+function verdict() {
+  const r = replay.result || {};
+  const scores = Array.isArray(r.scores) ? r.scores : [0, 0];
+  const draw = scores[0] === scores[1];
+  const winner = draw ? null : (scores[0] > scores[1] ? 0 : 1);
+  const rows = replay.names.map((_, i) => ({
+    i, alias: seatAlias(i), name: seatName(i), score: scores[i],
+    breaches: (r.breaches || [])[i], taken: (r.breaches_taken || [])[i],
+    par: (r.par_fails || [])[i], illegal: (r.illegal_tests || [])[i],
+    win: winner === i,
+  }));
+  rows.sort((a, b) => (b.score - a.score) || a.i - b.i);
+  return {
+    key: JSON.stringify([replay.names, scores, r.reason, r.killer_test]),
+    draw, winner,
+    winnerName: draw ? null : rows[0].alias,
+    killer: r.killer_test || null,
+    endReason: r.reason || "",
+    rows,
+  };
+}
+const END_REASON_TEXT = {
+  complete: "All nine holes were resolved.",
+  deadline: "The engine's wall-clock budget ran out; the match settled on the last resolved hole.",
+  harness_fault: "The sandbox harness faulted; the match settled on the last resolved hole.",
+};
+
+function buildEndCard(v) {
+  const head = $("ec-headline");
+  head.textContent = v.draw ? "DRAWN MATCH" : `${teamHeadline(v.winnerName)} WINS`;
+  head.className = "headline " + (v.draw ? "draw" : seatCls(v.winner));
+  $("ec-wincond").textContent = "ZERO-SUM · BREACHES − AUDIT FAILURES";
+  $("ec-how").textContent = END_REASON_TEXT[v.endReason] || (v.endReason ? `end reason: ${v.endReason}` : "");
+  const teams = $("ec-teams"); teams.textContent = "";
+  v.rows.forEach((row, pos) => {
+    const t = document.createElement("div"); t.className = "ec-team " + seatCls(row.i) + (row.win ? " win" : "");
+    const nm = document.createElement("div"); nm.className = "ec-tname";
+    nm.textContent = `#${pos + 1} ${row.alias}`;
+    nm.title = `${row.alias} — played by ${row.name}`;
+    nm.addEventListener("click", () => { setPlaying(false); selectSeat(row.i); });
+    const sub = document.createElement("div"); sub.className = "fl-cap"; sub.textContent = row.name;
+    const lv = document.createElement("div"); lv.className = "ec-lives";
+    const num = document.createElement("span"); num.className = "fl-num"; num.textContent = signed(row.score);
+    const cap = document.createElement("span"); cap.className = "fl-cap"; cap.textContent = "score";
+    lv.appendChild(num); lv.appendChild(cap);
+    t.appendChild(nm); t.appendChild(sub); t.appendChild(lv);
+    for (const [label, val] of [["breaches", row.breaches], ["breached", row.taken],
+                                ["audit fails", row.par], ["illegal", row.illegal]]) {
+      const r = document.createElement("div"); r.className = "ec-row";
+      const a = document.createElement("span"); a.className = "pname"; a.textContent = label;
+      const b = document.createElement("span"); b.className = "n"; b.textContent = fmtNum(val, 0);
+      r.appendChild(a); r.appendChild(b); t.appendChild(r);
+    }
+    teams.appendChild(t);
+  });
+  // the single killer test, with its one-line why
+  const killer = document.createElement("div"); killer.className = "killer";
+  if (v.killer) {
+    killer.appendChild(document.createTextNode(`KILLER TEST · hole ${v.killer.hole} · `));
+    const b = document.createElement("b");
+    b.textContent = `${seatAlias(v.killer.slot)} ▸ ${JSON.stringify(v.killer.name)}`;
+    killer.appendChild(b);
+    killer.appendChild(document.createTextNode(` — ${v.killer.why || "no reason given"}`));
+  } else {
+    killer.textContent = "NO BREACH — DRAWN MATCH";
+  }
+  const host = $("ec-teams").parentNode;
+  const old = host.querySelector(".killer");
+  if (old) old.remove();
+  host.insertBefore(killer, $("ec-replay"));
+  // scrubber cap + WINS chip (shared chrome; spoiler-gated)
+  C.setVerdict(v.draw ? "draw" : seatCls(v.winner), v.draw ? "DRAW" : `${teamHeadline(v.winnerName)} WINS`);
+  const chip = $("win-chip");
+  chip.textContent = v.draw ? "DRAW" : `${teamHeadline(v.winnerName)} WINS`;
+  chip.className = "win-chip " + (v.draw ? "draw" : seatCls(v.winner));
+}
+
+function renderCountdown() {
+  const el = $("ec-replay");
+  el.textContent = "";
+  el.appendChild(document.createTextNode("Replaying in "));
+  const b = document.createElement("b"); b.textContent = String(endCountdown); el.appendChild(b);
+  renderClock();
+}
+
+function showEndCard() {
+  if (!spoiled) { spoiled = true; renderHeader(); renderResult(); }
+  const v = verdict();
+  if (v.key !== endVerdictKey) { buildEndCard(v); endVerdictKey = v.key; }
+  if (!endShown) {
+    endShown = true;
+    endCountdown = END_COUNTDOWN_S;
+    $("endcard").classList.add("on");
+    clearInterval(endTimer);
+    endTimer = setInterval(() => {
+      endCountdown -= 1;
+      if (endCountdown <= 0) {
+        hideEndCard();
+        beatIdx = -1;
+        selectBeat(0);
+        setPlaying(true);
+        return;
+      }
+      renderCountdown();
+    }, 1000);
+  }
+  renderCountdown();
+  $("win-chip").classList.add("show");
+}
+function hideEndCard() {
+  if (!endShown) return;
+  endShown = false;
+  clearInterval(endTimer); endTimer = null;
+  $("endcard").classList.remove("on");
+  if (!spoilersOn()) $("win-chip").classList.remove("show");
+}
+// The verdict (WINS chip + scrubber cap) is visible throughout with spoilers
+// on; with spoilers off it appears only while the end card is up.
+function syncVerdictChip() {
+  if (!replay) return;
+  if (spoilersOn()) {
+    if (!endVerdictKey) { const v = verdict(); buildEndCard(v); endVerdictKey = v.key; }
+    $("win-chip").classList.add("show");
+  } else if (!endShown) $("win-chip").classList.remove("show");
+}
+function syncEndCard() {
+  if (!replay) return;
+  if (isLastBeat() && beatCount() > 0) showEndCard(); else hideEndCard();
+  syncVerdictChip();
+}
+
+// ---- navigation ------------------------------------------------------------
+function selectSeat(i) {
+  if (i === seat || i < 0 || i >= replay.names.length) return;
+  seat = i;
+  renderHeader(); renderBeatPanels(); renderTransport();
+}
+function selectBeat(i) {
+  const n = beatCount();
+  i = Math.max(0, Math.min(n - 1, i));
+  // EVERY seek dismisses the end card (click, drag, keyboard, beat button).
+  if (i !== n - 1) hideEndCard();
+  if (i === beatIdx) { renderBeatPanels(); renderTransport(); syncEndCard(); return; }
+  beatIdx = i;
+  renderHeader(); renderScroll(); renderFeed(); renderBeatPanels(); renderTransport();
+  pushBeat(); syncEndCard();
+}
+function setPlaying(p) {
+  const n = beatCount();
+  if (p && beatIdx >= n - 1) { hideEndCard(); beatIdx = -1; }   // replay from the start
+  playing = p && n > 0;
+  lastAdvance = performance.now();
+  if (playing && beatIdx < 0) selectBeat(0);
+  renderTransport();
+}
+function setSpeedIndex(k) { const v = C.SPEEDS[k]; if (v) { speed = v; renderTransport(); } }
+function bumpSpeed(dir) {
+  const k = Math.max(0, Math.min(C.SPEEDS.length - 1, C.SPEEDS.indexOf(speed) + dir));
+  setSpeedIndex(k);
+}
+
+$("btn-play").addEventListener("click", () => setPlaying(!playing));
+$("btn-restart").addEventListener("click", () => { setPlaying(false); selectBeat(0); });
+$("btn-back").addEventListener("click", () => { setPlaying(false); selectBeat(beatIdx - 1); });
+$("btn-fwd").addEventListener("click", () => { setPlaying(false); selectBeat(beatIdx + 1); });
+$("btn-skip5").addEventListener("click", () => { setPlaying(false); selectBeat(beatIdx + 5); });
+$("btn-end").addEventListener("click", () => { setPlaying(false); selectBeat(beatCount() - 1); });
+// keyboard shortcuts mirror the transport (ctf vocabulary: space , . b e o
+// 1-9 +/- Esc) plus the beat/seat keys this timeline needs. The camera keys
+// (f / g / c) are gone with the camera: the cogolf arena is fixed.
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === "Escape") {
+    // Observatory's TheaterOverlay listens for exactly this message.
+    if (EMBEDDED) window.parent.postMessage({ src: "ctf-shell", type: "esc" }, "*");
+    return;
+  }
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+  if (k === "o") { setSpoilers(!getSpoilers()); return; }
+  if (k === "p") { togglePane(); return; }
+  if (!replay) return;
+  const n = beatCount();
+  if (k === " ") { setPlaying(!playing); e.preventDefault(); }
+  else if (k === "ArrowRight") { setPlaying(false); selectBeat(beatIdx + (e.shiftKey ? 5 : 1)); e.preventDefault(); }
+  else if (k === "ArrowLeft") { setPlaying(false); selectBeat(beatIdx - (e.shiftKey ? 5 : 1)); e.preventDefault(); }
+  else if (k === "." || k === ">") { setPlaying(false); selectBeat(beatIdx + 5); }
+  else if (k === "," || k === "<" || k === "Home") { setPlaying(false); selectBeat(0); e.preventDefault(); }
+  else if (k === "b") { setPlaying(false); selectBeat(beatIdx - 1); }
+  else if (k === "e" || k === "End") { setPlaying(false); selectBeat(n - 1); e.preventDefault(); }
+  else if (k === "[") selectSeat((seat + replay.names.length - 1) % replay.names.length);
+  else if (k === "]") selectSeat((seat + 1) % replay.names.length);
+  else if (k === "+" || k === "=") bumpSpeed(1);
+  else if (k === "-" || k === "_") bumpSpeed(-1);
+  else if (k >= "1" && k <= "9") setSpeedIndex(Number(k) - 1);
+});
+
+// ---- per-frame: loader dismissal ------------------------------------------
+const stage = $("stage");
+const canvas = $("canvas");
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (!core || !replay) return;
+  // frames are arriving: a timeout card (however late it was raised) is stale
+  if (timeoutCardShown && firstFrameSeen) clearFailCard();
+  if (bootState === "boot" && firstFrameSeen && now - PAGE_T0 >= LOADER_MIN_DWELL_MS) {
+    // ready = replay parsed + first board frame composited + minimum loader dwell
+    $("loader").classList.add("hide");
+    setBootState("ready");
+    setPlaying(true);   // autoplay at a readable pace
+  }
+}
+requestAnimationFrame(tick);
+
+// Playback clock: a timer rather than rAF so a hidden tab still advances
+// (throttled) instead of freezing until it is shown again.
+function advancePlayback() {
+  if (!playing || !replay) return;
+  const now = performance.now();
+  const interval = BASE_BEAT_MS / speed;
+  if (now - lastAdvance >= interval) {
+    lastAdvance = now;
+    if (beatIdx >= beatCount() - 1) setPlaying(false); else selectBeat(beatIdx + 1);
+  }
+}
+setInterval(advancePlayback, 50);
+
+// ---- layout: HUD unit override + the transport band ---------------------------
+// The HUD unit (--u) is pure CSS: clamp(0.68px, min(100vw/1440, 100vh/820), 1.2px)
+// so the chrome keeps its proportions from a laptop pane to a wall display
+// without a resize handler. ?hud=<0.6..1.5> multiplies it (--hud).
+const HUD_MIN = 0.6, HUD_MAX = 1.5;
+function hudScaleFromUrl() {
+  const raw = params.get("hud");
+  if (raw == null) return 1;
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return 1;
+  return Math.max(HUD_MIN, Math.min(HUD_MAX, v));
+}
+// cogolf additions to the inherited cogame-factorio chrome: relayout()
+// publishes --hudscale (the resolved ?hud= multiplier) and --band (the
+// measured transport-band height) on :root, so nothing has to guess how tall
+// the transport is — the end card stops exactly above it.
+function relayout() {
+  const scale = hudScaleFromUrl();
+  document.documentElement.style.setProperty("--hud", String(scale));
+  document.documentElement.style.setProperty("--hudscale", String(scale));
+  const band = $("transport").getBoundingClientRect().height || 0;
+  document.documentElement.style.setProperty("--band", Math.round(band) + "px");
+}
+relayout();
+new ResizeObserver(() => relayout()).observe($("transport"));
+
+function syncCanvasSize() {
+  if (!core) return;
+  core.setViewportFit();
+}
+new ResizeObserver(() => syncCanvasSize()).observe(stage);
+
+// ---- boot ----------------------------------------------------------------------
+async function fetchReplay() {
+  hideStatus();
+  $("loader-text").textContent = "fetching replay …";
+  const resp = await fetch(REPLAY_URL, { credentials: "omit" });
+  if (!resp.ok) throw new Error(`fetch ${REPLAY_URL}: HTTP ${resp.status}`);
+  const bytes = await resp.arrayBuffer();
+  $("loader-text").textContent = "raising the fortresses …";
+  const doc = RD.parseReplay(new TextDecoder().decode(bytes));
+  return { doc, bytes };
+}
+
+function startCore(bytes) {
+  if (!window.CogolfStaticReplay) throw new Error("static_replay.js did not load (CogolfStaticReplay missing)");
+  core = window.CogolfStaticReplay.createCore({
+    canvas,
+    onText: onCoreText,
+    onStatus: (st) => { if (st === "connecting") showStatus("raising the fortresses …"); else hideStatus(); },
+    onBoot: onWorkerBoot,
+    onFirstFrame: () => {
+      firstFrameSeen = true;
+      if (noDataTimer) { clearTimeout(noDataTimer); noDataTimer = null; }
+      clearFailCard();
+      console.info(`[replay] first frame at ${Math.round(performance.now() - PAGE_T0)} ms`);
+      core.setViewportFit();
+    },
+    onTransform: () => {},
+    onLoaded: () => {
+      onWorkerBoot();
+      if (noDataTimer) { clearTimeout(noDataTimer); noDataTimer = null; }
+      clearFailCard();
+      setBootState("boot"); armStuckTimer(); pushBeat();
+    },
+  });
+  // static_replay.js reports Worker failures (incl. the wasm stage note on an
+  // OOM abort) into #status; mirror them onto the fail card.
+  const statusEl = $("status");
+  new MutationObserver(() => {
+    const t = statusEl.textContent || "";
+    if (t.startsWith("Replay failed:")) {
+      lastWorkerStage = t;
+      showFailCard("Board renderer failed", [t, `replay: ${REPLAY_URL}`], true);
+      setBootState("failed");
+    }
+  }).observe(statusEl, { childList: true, characterData: true, subtree: true });
+  core.start(bytes);
+  // The Worker is running (fetching/instantiating the wasm): the 12 s
+  // "no data" card would fire mid-boot on a slow link, so escalate to the
+  // 45 s budget now; the 'boot' message keeps that budget.
+  if (bootState === "loading") armNoDataTimer(FAIL_STUCK_MS);
+}
+
+async function boot() {
+  const { doc, bytes } = await fetchReplay().catch((e) => { throw new Error("replay load failed: " + (e && e.message || e)); });
+  replay = doc;
+  if (!replay.events.length) throw new Error("replay has no beats");
+  beatIdx = 0;
+  killerIdx = RD.killerBeat(replay);
+  renderBeatButtons();
+  renderHeader(); renderScroll(); renderFeed(); renderResult();
+  renderBeatPanels();
+  renderTransport();
+  syncVerdictChip();
+  $("transport").classList.remove("disabled");
+  relayout();
+  hideStatus();
+  document.title = `cogame-cogolf replay — ${seatName(0)} vs ${seatName(1)}`;
+  startCore(bytes);
+  // bootState flips to "boot" when the Worker has loaded the replay and to
+  // "ready" in tick() once the first board frame is composited
+}
+
+// loading plate tiles
+(() => { const f = document.querySelector("#loader .floor"); for (let i = 0; i < 18; i++) { const t = document.createElement("i"); t.style.animationDelay = `${(i % 6) * 0.12 + Math.floor(i / 6) * 0.2}s`; f.appendChild(t); } })();
+
+window.addEventListener("load", () => {
+  boot().catch((e) => {
+    showError("viewer failed", e);
+    // name what was attempted, with a direct link, right away (the 12 s
+    // escalation only covers the silent case)
+    showFailCard("Replay didn’t load", [String(e && e.message || e), `replay: ${REPLAY_URL}`, `stage: ${stageNote()}`], true);
+  });
+});
+</script>
+</body>
+</html>

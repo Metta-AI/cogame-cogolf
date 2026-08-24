@@ -1,0 +1,35 @@
+[
+  {
+    "name": "cogolf-architect",
+    "run": "/bin/cogolf-player",
+    "image": "cogame-cogolf-player:latest",
+    "env": {
+      "PLAYER_PROMPT": "Play for the reading a careful spec author most likely meant. Before you write code, name the one clause in the prompt that admits two readings and pick the reading that is consistent with BOTH worked examples; implement that reading defensively so no input raises. Spend your tests on the clause you picked: five small, clearly-legal cases that a reader of the other reading would get wrong."
+    }
+  },
+  {
+    "name": "cogolf-sniper",
+    "run": "/bin/cogolf-player",
+    "image": "cogame-cogolf-player:latest",
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d",
+    "env": {
+      "PLAYER_PROMPT": "Play the boundaries. Enumerate the empty, single-element, tie, zero, negative and out-of-range inputs for this spec, decide what the reference must do with each from the prompt's exact words, and implement all of them without raising. Fire your five tests at the boundaries your opponent is most likely to have skipped, and use the history of which of your tests came back illegal to recalibrate what the reference actually does."
+    }
+  },
+  {
+    "name": "cogolf-literalist",
+    "run": "/bin/cogolf-player",
+    "image": "cogame-cogolf-player:latest",
+    "env": {
+      "PLAYER_SCRIPTED": "literalist"
+    }
+  },
+  {
+    "name": "cogolf-pedant",
+    "run": "/bin/cogolf-player",
+    "image": "cogame-cogolf-player:latest",
+    "env": {
+      "PLAYER_SCRIPTED": "pedant"
+    }
+  }
+]

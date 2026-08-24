@@ -1,0 +1,9 @@
+services:
+  game:
+    image: cogame-cogolf-game:latest
+    platform: linux/amd64
+    build: {context: ., dockerfile: Dockerfile, target: game, network: host}
+  player:
+    image: cogame-cogolf-player:latest
+    platform: linux/amd64
+    build: {context: ., dockerfile: Dockerfile, target: player, network: host}
