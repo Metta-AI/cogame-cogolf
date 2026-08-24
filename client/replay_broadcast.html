@@ -349,9 +349,13 @@
 
   /* the spec scroll: an HTML overlay pinned over the parchment the renderer
      bakes, so the text is crisp at any size */
-  #scroll{position:absolute; left:5%; right:5%; top:calc(6*var(--u)); z-index:4;
-    pointer-events:none; text-align:center; color:var(--ink);
-    text-shadow:0 1px 0 rgba(255,255,255,.35)}
+  /* the spec scroll overlay is pinned over the parchment the wasm renderer
+     bakes: placeScroll() sets left/top/width/height from the board transform,
+     so the crisp HTML text sits exactly on the banner at any size. */
+  #scroll{position:absolute; left:5%; top:calc(6*var(--u)); width:90%; z-index:4;
+    display:flex; flex-direction:column; justify-content:center;
+    padding:0 calc(14*var(--u)); pointer-events:none; text-align:center;
+    color:var(--ink); text-shadow:0 1px 0 rgba(255,255,255,.35)}
   #scroll .title{font-family:var(--pixfont); font-size:calc(19*var(--u)); line-height:1.05;
     letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   #scroll .prompt{font-family:var(--finefont); font-size:calc(9.5*var(--u)); line-height:1.35;
@@ -642,6 +646,10 @@ function clearFailCard() {
 let replay = null;        // validated replay document
 let core = null;          // CogolfStaticReplay worker core (board renderer)
 let board = null;         // {tile,w,h} from the renderer's chrome JSON
+let transform = null;     // last view transform pushed by the core
+// The parchment banner the renderer bakes, in board pixels (see
+// replay-viewer/cogolf_replay.nim: ScrollX0/ScrollX1 and the cap height).
+const SCROLL_RECT = [64, 8, 1152, 104];
 let seat = 0;             // selected seat (which plaque + readout is shown)
 let beatIdx = 0;          // selected beat index within replay.events
 let playing = false;
@@ -697,11 +705,25 @@ function currentHole() {
 
 function pushBeat() { if (core) core.sendCommand(`b:${beatIdx}`); }
 
+// Pin the HTML scroll overlay onto the baked parchment.
+function placeScroll() {
+  if (!transform || !board) return;
+  const el = $("scroll");
+  const scale = transform.scale || 1;
+  const left = (transform.offsetX || 0) + SCROLL_RECT[0] * scale;
+  const top = (transform.offsetY || 0) + SCROLL_RECT[1] * scale;
+  el.style.left = Math.round(left) + "px";
+  el.style.top = Math.round(top) + "px";
+  el.style.width = Math.round((SCROLL_RECT[2] - SCROLL_RECT[0]) * scale) + "px";
+  el.style.height = Math.round((SCROLL_RECT[3] - SCROLL_RECT[1]) * scale) + "px";
+}
+
 function onCoreText(text) {
   let msg;
   try { msg = JSON.parse(text); } catch (e) { return; }
   if (!msg || msg.kind !== "cogolf" || !msg.board) return;
   board = msg.board;
+  placeScroll();
 }
 
 // ---- collapsible program plaque ---------------------------------------------
@@ -1282,6 +1304,7 @@ new ResizeObserver(() => relayout()).observe($("transport"));
 function syncCanvasSize() {
   if (!core) return;
   core.setViewportFit();
+  placeScroll();
 }
 new ResizeObserver(() => syncCanvasSize()).observe(stage);
 
@@ -1311,7 +1334,7 @@ function startCore(bytes) {
       console.info(`[replay] first frame at ${Math.round(performance.now() - PAGE_T0)} ms`);
       core.setViewportFit();
     },
-    onTransform: () => {},
+    onTransform: (t) => { transform = t; placeScroll(); },
     onLoaded: () => {
       onWorkerBoot();
       if (noDataTimer) { clearTimeout(noDataTimer); noDataTimer = null; }
