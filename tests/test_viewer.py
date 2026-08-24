@@ -63,6 +63,20 @@ def _node() -> str | None:
     return shutil.which("node")
 
 
+def _fn_body(html: str, name: str) -> str:
+    """The source of one top-level function of the page's inline script."""
+    start = html.index(f"function {name}(")
+    depth = 0
+    for i in range(html.index("{", start), len(html)):
+        if html[i] == "{":
+            depth += 1
+        elif html[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return html[start:i + 1]
+    raise AssertionError(f"unterminated function {name}")
+
+
 # --------------------------------------------------------------------------
 # fixture
 # --------------------------------------------------------------------------
@@ -148,6 +162,32 @@ def test_the_load_signals_the_viewer_smoke_reads():
         "the loaded attribute must be set in the firstFrame branch"
     assert "setAttribute('data-replay-error'" in js
     assert js.count(marker) == 1
+
+
+def test_the_pages_own_failure_paths_set_data_replay_error():
+    """The other half of the negative signal. tools/ci/viewer_smoke.mjs fails
+    fast on <html data-replay-error>; a failure that only paints the fail card
+    (a bad ?replay= URL, a 404, a schema-invalid replay, the no-data and stuck
+    timers) would otherwise report a generic 90 s timeout instead of its
+    message. Every terminal failure path of the page sets the attribute, and a
+    late frame that recovers the UI clears it again."""
+    html = _index_html()
+    setter = _fn_body(html, "setReplayError")
+    assert 'documentElement.setAttribute("data-replay-error"' in setter
+    for fn in ("showError", "showFailCard"):
+        assert "setReplayError(" in _fn_body(html, fn), fn
+    # every page-side failure funnels through those two writers
+    catch = html[html.index("boot().catch("):]
+    catch = catch[:catch.index("\n});")]
+    assert "showError(" in catch and "showFailCard(" in catch
+    assert 'showFailCard("Replay didn’t load"' in _fn_body(html, "noDataCard")
+    assert 'showFailCard("Viewer stuck"' in _fn_body(html, "armStuckTimer")
+    assert 'showFailCard("Board renderer failed"' in _fn_body(html, "startCore")
+    assert 'showError("uncaught error"' in html
+    assert 'showError("unhandled rejection"' in html
+    # a late frame fully recovers the UI: the marker goes with the card
+    assert 'removeAttribute("data-replay-error")' in \
+        _fn_body(html, "clearFailCard")
 
 
 def test_the_bootstrap_and_the_link_flags_are_the_matched_pair():

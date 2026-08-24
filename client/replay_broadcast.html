@@ -548,8 +548,18 @@ setBootState("loading");
 // note arrives with a failure message rather than being polled here.
 let lastWorkerStage = "";
 function stageNote() { return lastWorkerStage || (core ? "worker running" : "(worker not started)"); }
+// The machine-readable half of the error surface. tools/ci/viewer_smoke.mjs
+// polls <html data-replay-error> and fails fast on it, so EVERY terminal
+// failure of the page sets it with a message (static_replay.js:showFailure
+// covers the Worker/wasm half). clearFailCard() removes it again when a late
+// frame recovers the UI.
+function setReplayError(message) {
+  document.documentElement.setAttribute("data-replay-error",
+    String(message || "replay failed"));
+}
 function showError(prefix, e) {
   const msg = (e && e.stack) ? `${e.message}\n${e.stack}` : String(e && e.message || e);
+  setReplayError(`${prefix}: ${String(e && e.message || e)}`);
   const b = $("banner");
   b.textContent = `${prefix}: ${msg}`;
   b.classList.add("show");
@@ -559,6 +569,7 @@ function showError(prefix, e) {
   console.error(prefix, e);
 }
 function showFailCard(title, lines, withLink) {
+  setReplayError([title, ...lines].join(" — "));
   const c = $("failcard");
   c.textContent = "";
   const t = document.createElement("div"); t.className = "t"; t.textContent = title; c.appendChild(t);
@@ -631,6 +642,7 @@ function armStuckTimer() {
 // the failed state so the board takes over.
 function clearFailCard() {
   timeoutCardShown = false;
+  document.documentElement.removeAttribute("data-replay-error");
   const c = $("failcard");
   c.classList.remove("show");
   c.textContent = "";
