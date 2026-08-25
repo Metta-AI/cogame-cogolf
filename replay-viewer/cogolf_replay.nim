@@ -419,6 +419,13 @@ proc bakeArena(): Rgba =
     while x + midW <= ScrollX1 - capW:
       result.drawAtlasAt(midIdx, x + midW div 2, midY)
       x += midW
+    # The run between the caps (960 px) is not a whole number of mid tiles
+    # (128 px), so the loop stopped 64 px short of the right cap and left a
+    # hole in the banner -- which the HTML spec overlay then wrote across. One
+    # more tile, right-aligned against the cap, closes it; the parchment
+    # texture repeats, so overlapping the previous tile does not show.
+    if x < ScrollX1 - capW:
+      result.drawAtlasAt(midIdx, ScrollX1 - capW - midW div 2, midY)
     result.drawAtlasAt(rightIdx, ScrollX1 - capW div 2, midY)
   # Tees.
   for seat in 0 ..< Seats:
