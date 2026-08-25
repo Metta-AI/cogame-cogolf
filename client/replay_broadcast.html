@@ -106,8 +106,13 @@
   /* ONE row (title | clock | this-step readout | seat chips): nothing wraps;
      the title block, then the chips (names ellipsize), then the readout give
      way as the pane narrows. Only a phone-width pane falls back to wrapping. */
+  /* padding-right also clears --hostctl: softmax.com's CoworldReplayFrame draws
+     a 32 px fullscreen control at top:8px right:8px OVER this iframe, and the
+     last seat chip's score sat underneath it. */
   #scorebug{display:flex; align-items:center; justify-content:center; flex-wrap:nowrap;
-    padding:calc(6*var(--u)) calc(14*var(--u)); gap:calc(8*var(--u)) calc(16*var(--u)); min-height:calc(56*var(--u))}
+    --hostctl:44px;
+    padding:calc(6*var(--u)) calc(14*var(--u) + var(--hostctl)) calc(6*var(--u)) calc(14*var(--u));
+    gap:calc(8*var(--u)) calc(16*var(--u)); min-height:calc(56*var(--u))}
   @media (max-width: 760px){ #scorebug{flex-wrap:wrap} }
   .wallnames{flex:1 2 calc(240*var(--u)); min-width:calc(120*var(--u)); display:flex; flex-direction:column; justify-content:center; gap:calc(2*var(--u))}
   #stepro{flex:0 1 auto; display:flex; align-items:center; gap:calc(10*var(--u)); padding:calc(4*var(--u)) calc(10*var(--u));
@@ -352,17 +357,26 @@
   /* the spec scroll overlay is pinned over the parchment the wasm renderer
      bakes: placeScroll() sets left/top/width/height from the board transform,
      so the crisp HTML text sits exactly on the banner at any size. */
+  /* --su is the parchment's OWN unit: placeScroll sets it to the pinned box
+     height / 96 (the banner's world height). The text used to be sized from
+     --u, the HUD unit, which tracks the stage width instead -- so in a wide
+     frame the 19u title and two 9.5u prompt lines were laid out for a band far
+     taller than the parchment actually drawn, and the block ran over its own
+     lines and off the paper. Sizing from the box makes the text fit the banner
+     at every width by construction. */
   #scroll{position:absolute; left:5%; top:calc(6*var(--u)); width:90%; z-index:4;
+    --su:var(--u);
     display:flex; flex-direction:column; justify-content:center;
-    padding:0 calc(14*var(--u)); pointer-events:none; text-align:center;
+    padding:0 calc(14*var(--su)); pointer-events:none; text-align:center;
+    overflow:hidden;
     color:var(--ink); text-shadow:0 1px 0 rgba(255,255,255,.35)}
-  #scroll .title{font-family:var(--pixfont); font-size:calc(19*var(--u)); line-height:1.05;
+  #scroll .title{font-family:var(--pixfont); font-size:calc(19*var(--su)); line-height:1.05;
     letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-  #scroll .prompt{font-family:var(--finefont); font-size:calc(9.5*var(--u)); line-height:1.35;
-    margin-top:calc(2*var(--u)); max-height:calc(34*var(--u)); overflow:hidden;
+  #scroll .prompt{font-family:var(--finefont); font-size:calc(9.5*var(--su)); line-height:1.35;
+    margin-top:calc(2*var(--su)); max-height:calc(34*var(--su)); overflow:hidden;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
-  #scroll .amb{display:none; font-family:var(--finefont); font-size:calc(8.5*var(--u));
-    margin-top:calc(2*var(--u)); color:#5d4a33}
+  #scroll .amb{display:none; font-family:var(--finefont); font-size:calc(8.5*var(--su));
+    margin-top:calc(2*var(--su)); color:#5d4a33}
   #scroll.spoiled .amb{display:block}
 
   /* the beat feed: the last four beats, one line each (bottom-left of the
@@ -661,7 +675,11 @@ let board = null;         // {tile,w,h} from the renderer's chrome JSON
 let transform = null;     // last view transform pushed by the core
 // The parchment banner the renderer bakes, in board pixels (see
 // replay-viewer/cogolf_replay.nim: ScrollX0/ScrollX1 and the cap height).
-const SCROLL_RECT = [64, 8, 1152, 104];
+// The writable paper, NOT the banner's full extent. The renderer draws a 64 px
+// cap at each end of 64..1152, so text laid out across the whole rect started
+// on the left cap and ended on (or past) the right one.
+const SCROLL_RECT = [128, 8, 1088, 104];
+const SCROLL_WORLD_H = 96;
 let seat = 0;             // selected seat (which plaque + readout is shown)
 let beatIdx = 0;          // selected beat index within replay.events
 let playing = false;
@@ -726,8 +744,12 @@ function placeScroll() {
   const top = (transform.offsetY || 0) + SCROLL_RECT[1] * scale;
   el.style.left = Math.round(left) + "px";
   el.style.top = Math.round(top) + "px";
-  el.style.width = Math.round((SCROLL_RECT[2] - SCROLL_RECT[0]) * scale) + "px";
-  el.style.height = Math.round((SCROLL_RECT[3] - SCROLL_RECT[1]) * scale) + "px";
+  const width = Math.round((SCROLL_RECT[2] - SCROLL_RECT[0]) * scale);
+  const height = Math.round((SCROLL_RECT[3] - SCROLL_RECT[1]) * scale);
+  el.style.width = width + "px";
+  el.style.height = height + "px";
+  // The parchment's own unit, so the text scales with the banner it sits on.
+  el.style.setProperty("--su", (height / SCROLL_WORLD_H) + "px");
 }
 
 function onCoreText(text) {
