@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
+import time
 
 import pytest
 from players import client as client_module
-from players.client import Policy, normalize_submission, play_episode
-from players.llm_player import LLMPolicy, balanced_span, parse_reply
+from players import llm_player
+from players.client import MAX_NOTE_CHARS, Policy, normalize_submission, play_episode
+from players.llm_player import (LLMPolicy, RETRY_BACKOFFS, _is_transient,
+                                balanced_span, parse_reply)
 from players.main import choose_policy
 from players.scripted import ScriptedPolicy, UnknownBaseline, scripted_submission
 
@@ -155,6 +159,222 @@ def test_an_api_failure_substitutes_the_scripted_move_and_rotates_the_model():
     played = policy.submission(1, OBSERVATION)
     assert "def solve" in played["impl"]
     assert policy.model != first
+
+
+# -- transient provider failures are retried inside the hole budget ---------
+
+# The exact shape `_BedrockHttpClient.create` raised in issue #2.
+SIDECAR_503 = ("bedrock invoke us.anthropic.claude-haiku-4-5-20251001-v1:0: "
+               "<HTTPError 503: ''> {\"message\":\"LLM provider is unavailable\"}")
+SIDECAR_400 = ("bedrock invoke us.anthropic.claude-haiku-4-5-20251001-v1:0: "
+               "<HTTPError 400: 'Bad Request'> {\"message\":\"bad schema\"}")
+LLM_ANSWER = json.dumps({"impl": "def solve(xs):\n    return sorted(xs)[len(xs) // 2]\n",
+                         "tests": [{"name": "odd", "args": [[3, 1, 2]],
+                                    "expect": 2, "why": "middle"}],
+                         "note": "the model's own note"})
+
+
+class _Reply:
+    def __init__(self, text, stop_reason="end_turn"):
+        self.stop_reason = stop_reason
+        self.content = [type("B", (), {"type": "text", "text": text})()]
+
+
+class _ScriptedClient:
+    """A fake `messages.create` that plays a script of exceptions / replies
+    and records every call's model and timeout."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls: list[dict] = []
+        self.messages = self
+        self._timeout = None
+
+    def with_options(self, **kwargs):
+        self._timeout = kwargs.get("timeout")
+        return self
+
+    def create(self, **kwargs):
+        self.calls.append({"model": kwargs["model"], "timeout": self._timeout})
+        step = self.script.pop(0)
+        if isinstance(step, BaseException):
+            raise step
+        return step
+
+
+def _bedrock_policy(monkeypatch, client, **kwargs):
+    policy = LLMPolicy(provider="bedrock", **kwargs)
+    policy._disabled = False
+    policy._client = client
+    logged = []
+    monkeypatch.setattr(LLMPolicy, "_log", staticmethod(logged.append))
+    return policy, logged
+
+
+def _no_sleep(monkeypatch):
+    slept = []
+    monkeypatch.setattr(llm_player.time, "sleep", slept.append)
+    return slept
+
+
+def test_a_transient_503_is_retried_and_the_model_s_answer_is_played(monkeypatch):
+    slept = _no_sleep(monkeypatch)
+    client = _ScriptedClient([RuntimeError(SIDECAR_503), RuntimeError(SIDECAR_503),
+                              _Reply(LLM_ANSWER)])
+    policy, logged = _bedrock_policy(monkeypatch, client)
+    first = policy.model
+    played = policy.submission(3, OBSERVATION)
+    assert played["note"] == "the model's own note"
+    assert played["impl"].startswith("def solve(xs)")
+    assert len(client.calls) == 3
+    assert slept == list(RETRY_BACKOFFS[:2])
+    assert all(s < 3 for s in slept)
+    # the retry switched to the next candidate immediately, and stayed there
+    assert client.calls[0]["model"] == first
+    assert client.calls[1]["model"] != first
+    assert client.calls[2]["model"] == client.calls[1]["model"]
+    assert any(f"API call failed at hole 3 on {first}" in line for line in logged)
+    assert any("for the retry" in line for line in logged)
+    # every call is bounded by the per-call timeout, never more
+    assert all(0 < c["timeout"] <= policy.timeout for c in client.calls)
+
+
+def test_a_permanent_400_degrades_immediately_without_a_retry(monkeypatch):
+    slept = _no_sleep(monkeypatch)
+    client = _ScriptedClient([RuntimeError(SIDECAR_400), _Reply(LLM_ANSWER)])
+    policy, logged = _bedrock_policy(monkeypatch, client)
+    first = policy.model
+    played = policy.submission(1, OBSERVATION)
+    assert "def solve" in played["impl"]
+    assert played["note"].startswith("fallback:permanent_error")
+    assert len(client.calls) == 1 and slept == []
+    assert policy.model != first                       # rotated for the next hole
+    assert any("for the next hole" in line for line in logged)
+
+
+def test_the_hole_budget_forbids_a_retry_that_would_not_fit(monkeypatch):
+    monkeypatch.setenv("COGAME_LLM_HOLE_BUDGET", "0.6")
+    client = _ScriptedClient([RuntimeError(SIDECAR_503)] * 4 + [_Reply(LLM_ANSWER)])
+    policy, logged = _bedrock_policy(monkeypatch, client)
+    assert policy.hole_budget == 0.6
+    started = time.monotonic()
+    played = policy.submission(2, OBSERVATION)
+    wall = time.monotonic() - started
+    assert wall < 0.6 + 1.0
+    assert played["note"].startswith("fallback:provider_error")
+    assert "def solve" in played["impl"]
+    # 0 + 0.5 + 1.0 >= 0.6: the first backoff already does not fit
+    assert len(client.calls) == 1
+    assert client.calls[0]["timeout"] <= 0.6
+    assert any("no retry at hole 2" in line for line in logged)
+
+
+def test_retries_stop_when_the_backoffs_are_exhausted(monkeypatch):
+    slept = _no_sleep(monkeypatch)
+    client = _ScriptedClient([RuntimeError(SIDECAR_503)] * 10)
+    policy, _ = _bedrock_policy(monkeypatch, client)
+    played = policy.submission(1, OBSERVATION)
+    assert played["note"].startswith("fallback:provider_error")
+    assert len(client.calls) == len(RETRY_BACKOFFS) + 1
+    assert slept == list(RETRY_BACKOFFS)
+
+
+def test_the_caching_rejected_retry_still_works_inside_the_loop(monkeypatch):
+    slept = _no_sleep(monkeypatch)
+    client = _ScriptedClient([RuntimeError("400 cache_control is not supported"),
+                              _Reply(LLM_ANSWER)])
+    policy, logged = _bedrock_policy(monkeypatch, client)
+    policy.api_docs = "docs"
+    played = policy.submission(1, OBSERVATION)
+    assert played["note"] == "the model's own note"
+    assert policy._cache_ok is False and slept == []
+    assert len(client.calls) == 2
+    assert any("prompt caching rejected" in line for line in logged)
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (RuntimeError(SIDECAR_503), True),
+    (RuntimeError("bedrock invoke m: <HTTPError 502: 'Bad Gateway'> "), True),
+    (RuntimeError("bedrock invoke m: <HTTPError 429: 'Too Many Requests'> "), True),
+    (RuntimeError("bedrock invoke m: URLError(timeout('timed out')) "), True),
+    (RuntimeError("bedrock invoke m: TimeoutError('The read operation timed out') "), True),
+    (RuntimeError("bedrock invoke m: ConnectionResetError(54, 'Connection reset by peer') "), True),
+    (RuntimeError("bedrock invoke m: URLError(ConnectionRefusedError(61, 'Connection refused')) "), True),
+    (TimeoutError(), True),
+    (socket.timeout(), True),
+    (ConnectionResetError(), True),
+    (ConnectionRefusedError(), True),
+    (socket.gaierror(), True),
+    (RuntimeError(SIDECAR_400), False),
+    (RuntimeError("bedrock invoke m: <HTTPError 401: 'Unauthorized'> "), False),
+    (RuntimeError("bedrock invoke m: <HTTPError 403: 'Forbidden'> "), False),
+    (RuntimeError("bedrock invoke m: <HTTPError 404: 'Not Found'> "), False),
+    (RuntimeError("bedrock invoke m: <HTTPError 422: 'Unprocessable'> "), False),
+    # the status wins over a body that merely mentions a transport word
+    (RuntimeError("bedrock invoke m: <HTTPError 400: ''> "
+                  "{\"message\":\"Connection timeout in request body\"}"), False),
+    (RuntimeError("bedrock invoke m: JSONDecodeError('Expecting value') "), False),
+    (ValueError("not json"), False),
+    (json.JSONDecodeError("Expecting value", "", 0), False),
+    (PermissionError("denied"), False),
+    (FileNotFoundError("gone"), False),
+    (KeyError("impl"), False),
+])
+def test_is_transient_classifies_representative_failures(exc, expected):
+    assert _is_transient(exc) is expected
+
+
+def test_is_transient_understands_the_anthropic_sdk_errors():
+    anthropic = pytest.importorskip("anthropic")
+    httpx = pytest.importorskip("httpx")
+    request = httpx.Request("POST", "https://api.example/v1/messages")
+
+    def status(code):
+        return anthropic.APIStatusError(
+            f"status {code}", response=httpx.Response(code, request=request),
+            body=None)
+
+    assert _is_transient(anthropic.APITimeoutError(request=request))
+    assert _is_transient(anthropic.APIConnectionError(request=request))
+    for code in (408, 409, 429, 500, 502, 503, 529):
+        assert _is_transient(status(code)), code
+    for code in (400, 401, 403, 404, 422):
+        assert not _is_transient(status(code)), code
+
+
+@pytest.mark.parametrize("reason", ["refusal", "unparseable", "no_client"])
+def test_every_substitution_is_tagged_in_the_note(monkeypatch, reason):
+    if reason == "no_client":
+        policy = LLMPolicy(provider="none")
+    else:
+        reply = (_Reply("", stop_reason="refusal") if reason == "refusal"
+                 else _Reply("no json here"))
+        policy, _ = _bedrock_policy(monkeypatch, _ScriptedClient([reply]))
+    played = policy.submission(1, OBSERVATION)
+    note = played["note"]
+    assert note.startswith(f"fallback:{reason}")
+    assert len(note) <= MAX_NOTE_CHARS
+    assert note.endswith(scripted_submission("literalist", 1, OBSERVATION)["note"])
+    assert normalize_submission(played, 1)["note"] == note
+
+
+def test_the_fallback_note_is_capped_on_rune_boundaries():
+    from players.llm_player import _fallback_note
+    note = _fallback_note("provider_error", "\u00e9" * 500)
+    assert note == "fallback:provider_error"
+    note = _fallback_note("refusal", "short")
+    assert note == "fallback:refusal; short"
+
+
+def test_the_hole_budget_leaves_margin_inside_the_manifest_deadline():
+    from players.llm_player import DEFAULT_HOLE_BUDGET_SECONDS
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    manifest = json.loads((root / "coworld_manifest_template.json").read_text())
+    deadline = manifest["game"]["config_schema"]["properties"][
+        "hole_deadline_seconds"]["default"]
+    assert DEFAULT_HOLE_BUDGET_SECONDS + 4.0 <= deadline
+    assert sum(RETRY_BACKOFFS) + 1.0 < DEFAULT_HOLE_BUDGET_SECONDS
 
 
 def test_the_prompt_is_bounded_and_carries_the_spec_verbatim():
