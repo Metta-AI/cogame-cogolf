@@ -61,3 +61,10 @@ metta_rl = metta_rl_train(command=command, players=2)
 
 Use `blitz` in place of `duel` for the five-hole variant. Set the command paths
 to absolute paths when invoking either recipe outside this checkout.
+
+Both variants completed 512 Metta RL timesteps. At epoch ten, evaluation
+mean return was 0.037 for duel and 0.075 for blitz. Native PufferLib CUDA
+completed 1,024 timesteps per variant, then reloaded each checkpoint for
+held-out evaluation (four episodes per seed): duel scores were 4.29 and
+5.86 for seeds 101 and 102; blitz scores were 3.5 and 2.0. This verifies
+execution and checkpoint loading, not a gain over the baseline players.
