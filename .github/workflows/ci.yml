@@ -52,6 +52,8 @@ jobs:
         run: uv sync --frozen
       - name: Run tests
         run: uv run pytest -v
+      - name: Export post-training matches
+        run: uv run python tools/test_export_posttrain.py
 
   # ---------------------------------------------------------------------
   # Packaging smoke: the production image builds, and one real episode runs
