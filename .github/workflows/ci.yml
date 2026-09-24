@@ -54,6 +54,8 @@ jobs:
         run: uv run pytest -v
       - name: Export post-training matches
         run: uv run python tools/test_export_posttrain.py
+      - name: Run numeric training bridge
+        run: uv run python tools/test_train_bridge.py
 
   # ---------------------------------------------------------------------
   # Packaging smoke: the production image builds, and one real episode runs

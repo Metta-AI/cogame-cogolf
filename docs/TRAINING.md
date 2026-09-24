@@ -33,3 +33,38 @@ exported 80 and 20. All fit a 4,096-token context. One CPU optimizer step
 reduced four-example validation loss from 1.69997 to 1.69402 for duel and
 from 1.70176 to 1.69579 for blitz. These checks verify the training path;
 they do not establish stronger play than the scripted teachers.
+
+## Numeric training
+
+`tools/train_bridge.py` exposes the exact hosted seat observation and four
+choices: the published `literalist` or `pedant` implementation paired with
+either baseline's tests. Both seats choose before the production engine and
+sandbox resolve a hole. Each decision has 35 numeric features, and complete
+matches return zero-sum score and utility values. This catalog trains baseline
+selection; the post-training path above supports arbitrary code submissions.
+
+```sh
+uv run python tools/test_train_bridge.py
+```
+
+From a Metta checkout with the training stack installed, use the game bridge
+command with either the native PufferLib recipe or the Metta RL recipe:
+
+```python
+from recipes.external.coworld import train as puffer_train
+from recipes.external.coworld_metta_rl import train as metta_rl_train
+
+command = ["python", "tools/train_bridge.py", "coworld_manifest_template.json", "duel"]
+puffer = puffer_train(command=command, players=2)
+metta_rl = metta_rl_train(command=command, players=2)
+```
+
+Use `blitz` in place of `duel` for the five-hole variant. Set the command paths
+to absolute paths when invoking either recipe outside this checkout.
+
+Both variants completed 512 Metta RL timesteps. At epoch ten, evaluation
+mean return was 0.037 for duel and 0.075 for blitz. Native PufferLib CUDA
+completed 1,024 timesteps per variant, then reloaded each checkpoint for
+held-out evaluation (four episodes per seed): duel scores were 4.29 and
+5.86 for seeds 101 and 102; blitz scores were 3.5 and 2.0. This verifies
+execution and checkpoint loading, not a gain over the baseline players.
