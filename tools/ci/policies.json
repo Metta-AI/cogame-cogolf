@@ -33,5 +33,13 @@
     "env": {
       "PLAYER_SCRIPTED": "pedant"
     }
+  },
+  {
+    "name": "cogolf-jev",
+    "run": "/bin/cogolf-player",
+    "image": "cogame-cogolf-player:latest",
+    "env": {
+      "PLAYER_JEV": "true"
+    }
   }
 ]
