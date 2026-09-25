@@ -58,6 +58,7 @@ RUN bash viewer/build_viewer.sh && test -f viewer/dist/index.html
 # tools/ci/policies.json). ONE image, env-switched:
 #   PLAYER_SCRIPTED=<literalist|pedant>   the scripted baselines
 #   PLAYER_PROMPT="..."                   the LLM policy, prompt = strategy
+#   PLAYER_JEV=true                      Jev ranks complete legal submissions
 FROM python:3.11-slim AS player
 
 WORKDIR /workspace

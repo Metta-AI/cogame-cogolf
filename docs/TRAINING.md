@@ -42,6 +42,9 @@ either baseline's tests. Both seats choose before the production engine and
 sandbox resolve a hole. Each decision has 35 numeric features, and complete
 matches return zero-sum score and utility values. This catalog trains baseline
 selection; the post-training path above supports arbitrary code submissions.
+Jev uses the same seat observation and submission protocol to rank the two
+complete baseline submissions. The game keeps legality, scoring, results,
+and replay; no Jev decision runs in the game container.
 
 ```sh
 uv run python tools/test_train_bridge.py

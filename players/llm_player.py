@@ -55,6 +55,10 @@ BEDROCK_MODEL_CANDIDATES = [
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 ]
 DEFAULT_BEDROCK_MODEL = BEDROCK_MODEL_CANDIDATES[0]
+SIDECAR_MODEL_CANDIDATES = [
+    "anthropic/claude-haiku-4.5",
+    "anthropic/claude-sonnet-4.5",
+]
 
 # An implementation of ~60 lines plus five test records; 400/900 truncate
 # mid-function.
@@ -291,7 +295,8 @@ class _BedrockHttpClient:
         endpoint = (os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "").strip()
                     or f"https://bedrock-runtime.{region}.amazonaws.com")
         self.endpoint = endpoint.rstrip("/")
-        self.token = os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip()
+        self.token = ("" if os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+                      else os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip())
         self.timeout = timeout
         self.messages = self  # so `client.messages.create(...)` works
 
@@ -305,14 +310,20 @@ class _BedrockHttpClient:
         return bound
 
     def create(self, *, model: str, max_tokens: int, system, messages):
-        body = {"anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens, "system": system,
+        sidecar = bool(os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME"))
+        body = {"max_tokens": max_tokens, "system": system,
                 "messages": messages}
+        if sidecar:
+            body["model"] = model
+        else:
+            body["anthropic_version"] = "bedrock-2023-05-31"
         req = self._urllib.Request(
-            f"{self.endpoint}/model/{model}/invoke",
+            (f"{self.endpoint}/v1/messages" if sidecar else
+             f"{self.endpoint}/model/{model}/invoke"),
             data=json.dumps(body).encode(), method="POST",
             headers={"content-type": "application/json",
                      "accept": "application/json",
+                     **({"anthropic-version": "2023-06-01"} if sidecar else {}),
                      **({"authorization": f"Bearer {self.token}"}
                         if self.token else {})})
         try:
@@ -340,8 +351,11 @@ class LLMPolicy(Policy):
             os.environ.get("BEDROCK_MODEL") if self.provider == "bedrock"
             else None)
         if self.provider == "bedrock":
+            candidates = (SIDECAR_MODEL_CANDIDATES
+                          if os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+                          else BEDROCK_MODEL_CANDIDATES)
             self._models = [m for m in ([pinned] if pinned else [])
-                            + BEDROCK_MODEL_CANDIDATES if m]
+                            + candidates if m]
             self._models = list(dict.fromkeys(self._models))
         else:
             self._models = [pinned or DEFAULT_MODEL]

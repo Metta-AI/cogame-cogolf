@@ -22,9 +22,10 @@ A hole ranges ±9 and a nine-hole match ±81.
 - **Seats:** exactly 2. In-game aliases `Ash` (slot 0) and `Basil` (slot 1) are
   the only identity a policy ever sees; real player names are spectator-side
   only, in the replay.
-- **A policy is just a prompt.** `PLAYER_PROMPT` selects the LLM policy;
-  `PLAYER_SCRIPTED=literalist|pedant` selects a scripted baseline. One image,
-  one entrypoint (`/bin/cogolf-player`), env-switched.
+- **Policies share one player socket.** `PLAYER_PROMPT` selects a Claude
+  policy, `PLAYER_JEV=true` selects Jev over complete candidate submissions,
+  and `PLAYER_SCRIPTED=literalist|pedant` selects a baseline. One image and one
+  entrypoint (`/bin/cogolf-player`) serve all three.
 - **The engine is local.** There is no external game server: cogolf's harness is
   a sandboxed Python test-runner inside the game container (one subprocess per
   implementation, CPU/memory/syscall limits, an audit hook, NDJSON results).
@@ -65,7 +66,7 @@ server/cogame_cogolf/   contract.py (wire strings), config.py, specs/ (the deck)
                         engine.py (the hole loop), replay.py, results.py,
                         server.py (aiohttp), uris.py
 players/                main.py (the env switch), client.py (websocket harness),
-                        llm_player.py, scripted.py
+                        llm_player.py, jev.py, scripted.py
 client/ + viewer/ +     the static wasm replay viewer: the page and its chrome,
 replay-viewer/          the Nim -> emscripten renderer, the sprite atlas
 scripts/art/            the nano-banana cog render and the split script
@@ -86,7 +87,7 @@ docker build --platform=linux/amd64 -t cogame-cogolf:local .
 ```
 
 Releases go through `.github/workflows/coworld-release.yml`
-(build → certify → upload policies → upload coworld → secret put); league
+(build → certify → upload policies → upload coworld); league
 submissions through `.github/workflows/coworld-submit.yml`.
 
 ## Watch a replay

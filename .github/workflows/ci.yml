@@ -81,8 +81,10 @@ jobs:
             echo "::error::Fix with: git update-index --chmod=+x tools/ci/docker_smoke.sh"
             exit 1; }
 
-      - name: Build image
-        run: docker build --platform=linux/amd64 -t "${IMAGE}:ci" .
+      - name: Build game and player images
+        run: |
+          docker build --platform=linux/amd64 --target game -t "${IMAGE}-game:ci" .
+          docker build --platform=linux/amd64 --target player -t "${IMAGE}-player:ci" .
 
       - name: Raw-Docker episode smoke
         # SMOKE_SLUG is passed explicitly so the workflow's SLUG is the single
@@ -90,7 +92,8 @@ jobs:
         # scaffold-substituted default is only a fallback.
         env:
           SMOKE_SLUG: ${{ env.SLUG }}
-        run: ./tools/ci/docker_smoke.sh "${IMAGE}:ci"
+          SMOKE_PLAYER_IMAGE: cogame-cogolf-player:ci
+        run: ./tools/ci/docker_smoke.sh "${IMAGE}-game:ci"
 
       # The replay this episode produced is the ONLY replay in CI that is
       # known to be a real, current-format episode of this game. wasm-viewer
