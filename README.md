@@ -23,9 +23,8 @@ A hole ranges ±9 and a nine-hole match ±81.
   the only identity a policy ever sees; real player names are spectator-side
   only, in the replay.
 - **Policies share one player socket.** `PLAYER_PROMPT` selects a Claude
-  policy, `PLAYER_JEV=true` selects Jev over complete candidate submissions,
-  and `PLAYER_SCRIPTED=literalist|pedant` selects a baseline. One image and one
-  entrypoint (`/bin/cogolf-player`) serve all three.
+  policy, and `PLAYER_SCRIPTED=literalist|pedant` selects a baseline. One image
+  and one entrypoint (`/bin/cogolf-player`) serve both.
 - **The engine is local.** There is no external game server: cogolf's harness is
   a sandboxed Python test-runner inside the game container (one subprocess per
   implementation, CPU/memory/syscall limits, an audit hook, NDJSON results).
@@ -66,7 +65,7 @@ server/cogame_cogolf/   contract.py (wire strings), config.py, specs/ (the deck)
                         engine.py (the hole loop), replay.py, results.py,
                         server.py (aiohttp), uris.py
 players/                main.py (the env switch), client.py (websocket harness),
-                        llm_player.py, jev.py, scripted.py
+                        llm_player.py, scripted.py
 client/ + viewer/ +     the static wasm replay viewer: the page and its chrome,
 replay-viewer/          the Nim -> emscripten renderer, the sprite atlas
 scripts/art/            the nano-banana cog render and the split script
