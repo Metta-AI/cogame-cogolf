@@ -72,16 +72,18 @@ def test_a_missing_reply_gets_exactly_one_retry_and_then_the_fallback():
     assert result.holes_played == 1
 
 
-def test_the_wall_guard_ends_the_episode_with_deadline():
+def test_the_wall_guard_ends_the_episode_with_deadline(monkeypatch):
     """With less than hole_reserve_seconds left the engine refuses to start
     another hole and settles on the last fully resolved one."""
     engine, events, holes = build(
         [ScriptedSource("literalist"), ScriptedSource("pedant")],
         holes=4, wall_clock_budget_seconds=0.6, hole_reserve_seconds=0.5)
+    # Consume the reserve after one resolved hole, independent of CPU speed.
+    monkeypatch.setattr(engine, "_wall_remaining", lambda: 0.4 if holes else 0.6)
     result = asyncio.run(engine.run())
     assert result.reason == "deadline"
-    assert result.holes_played < 4
-    # the in-flight hole is discarded, never half-scored
+    assert result.holes_played == 1
+    # The completed hole is scored before the next one is refused.
     assert len(holes) == result.holes_played
     assert all(len(s.hole_scores) == result.holes_played for s in result.seats)
     assert events[-1]["kind"] == "episode_end"

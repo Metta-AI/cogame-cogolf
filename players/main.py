@@ -5,12 +5,11 @@ The policy is chosen at startup, in this order:
 1. ``PLAYER_SCRIPTED=<literalist|pedant>`` -> that scripted baseline. Any
    other value is a FATAL startup error (exit 1): a typo must never
    silently become an LLM seat.
-2. else ``PLAYER_JEV=true`` -> Jev ranks complete baseline submissions.
-3. else ``PLAYER_PROMPT`` set, or a provider is detectable
+2. else ``PLAYER_PROMPT`` set, or a provider is detectable
    (``AWS_BEARER_TOKEN_BEDROCK`` / ``AWS_ENDPOINT_URL_BEDROCK_RUNTIME`` /
    ``ANTHROPIC_API_KEY``) -> the LLM policy, with ``PLAYER_PROMPT``
    appended to the system preamble as the policy's strategy paragraph.
-4. else -> ``literalist``, so a credential-less CI or local run still
+3. else -> ``literalist``, so a credential-less CI or local run still
    plays a full, legal episode.
 
 ``python -m players.main``
@@ -23,7 +22,6 @@ import sys
 
 from players.client import Policy, run_policy_main
 from players.llm_player import LLMPolicy, _provider_from_env
-from players.jev import JevPolicy
 from players.scripted import ScriptedPolicy, UnknownBaseline
 
 
@@ -31,8 +29,6 @@ def choose_policy() -> Policy:
     scripted = os.environ.get("PLAYER_SCRIPTED", "").strip()
     if scripted:
         return ScriptedPolicy(scripted)
-    if os.environ.get("PLAYER_JEV", "").strip().lower() == "true":
-        return JevPolicy()
     prompt = os.environ.get("PLAYER_PROMPT", "").strip()
     provider = _provider_from_env()
     if prompt or provider != "none":

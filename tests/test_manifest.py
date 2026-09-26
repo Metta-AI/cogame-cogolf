@@ -110,15 +110,13 @@ def test_the_timing_arithmetic_fits_inside_the_play_budget():
         assert variant["game_config"]["wall_clock_budget_seconds"] <= budget
 
 
-def test_the_policy_set_has_prompt_scripted_and_jev_players():
+def test_the_policy_set_has_prompt_and_scripted_players():
     names = [p["name"] for p in POLICIES]
     assert names == ["cogolf-architect", "cogolf-sniper", "cogolf-literalist",
-                     "cogolf-pedant", "cogolf-jev"]
+                     "cogolf-pedant"]
     prompts = [p for p in POLICIES if "PLAYER_PROMPT" in p["env"]]
     scripted = [p for p in POLICIES if "PLAYER_SCRIPTED" in p["env"]]
-    jev = [p for p in POLICIES if p["env"].get("PLAYER_JEV") == "true"]
     assert len(prompts) == 2 and len(scripted) == 2
-    assert len(jev) == 1
     # champion #2 is owned by daveey-1, so its version is uploaded as them
     assert prompts[1]["player"] == "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
     assert "player" not in prompts[0]
