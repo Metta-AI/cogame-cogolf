@@ -16,7 +16,6 @@ from players.client import MAX_NOTE_CHARS, Policy, normalize_submission, play_ep
 from players.llm_player import (LLMPolicy, RETRY_BACKOFFS, _is_transient,
                                 balanced_span, parse_reply)
 from players.main import choose_policy
-from players.jev import JevPolicy
 from players.scripted import ScriptedPolicy, UnknownBaseline, scripted_submission
 
 OBSERVATION = {
@@ -68,39 +67,6 @@ def test_no_env_at_all_plays_the_literalist(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     policy = choose_policy()
     assert isinstance(policy, ScriptedPolicy) and policy.name == "literalist"
-
-
-def test_jev_uses_the_normal_private_view_and_returns_a_complete_submission(
-        monkeypatch):
-    monkeypatch.delenv("PLAYER_SCRIPTED", raising=False)
-    monkeypatch.setenv("PLAYER_JEV", "true")
-    monkeypatch.setenv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "http://sidecar")
-    monkeypatch.setenv("BEDROCK_MODEL", "typesafe/jev-1.13")
-    policy = choose_policy()
-    assert isinstance(policy, JevPolicy)
-    requests = []
-
-    def respond(request, timeout):
-        requests.append((request, timeout))
-        return io.BytesIO(json.dumps({"answers": {"submission": {
-            "type": "choice", "confidence": 0.9,
-            "probabilities": {"literalist": 0.1, "pedant": 0.9},
-        }}}).encode())
-
-    monkeypatch.setattr("players.jev.urlopen", respond)
-    played = policy.submission(1, OBSERVATION)
-    assert played["impl"] == scripted_submission("pedant", 1, OBSERVATION)["impl"]
-    assert played["tests"] == scripted_submission("pedant", 1, OBSERVATION)["tests"]
-    assert played["note"].startswith("Jev chose pedant;")
-    request, timeout = requests[0]
-    body = json.loads(request.data)
-    assert request.full_url == "http://sidecar/v1/systemone"
-    assert body["model"] == "typesafe/jev-1.13"
-    assert timeout < 27  # inside the Blitz player deadline
-    state = json.loads(body["state"].split("\n", 1)[1])
-    assert state["observation"] == OBSERVATION
-    assert set(state["candidates"]) == {"literalist", "pedant"}
-    assert normalize_submission(played, 1)["type"] == "submission"
 
 
 def test_prompt_sidecar_uses_messages_api(monkeypatch):

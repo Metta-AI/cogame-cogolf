@@ -55,7 +55,7 @@ the manifest template `coworld_manifest_template.json` (the platform contract).
   (the hole loop), `replay.py`, `results.py`, `server.py` (aiohttp: `/player`,
   `/global`, `/client/*`, `/healthz`, replay mode), `uris.py`.
 - `players/` — `main.py` (the env switch and the only entrypoint),
-  `client.py` (the shared websocket harness), `llm_player.py`, `jev.py`,
+  `client.py` (the shared websocket harness), `llm_player.py`,
   `scripted.py`.
 - Static wasm replay viewer: `replay-viewer/cogolf_replay.nim` + `config.nims`
   (Nim → emscripten; the arena as Bitworld sprite packets), `client/`
@@ -84,7 +84,7 @@ docker build --platform=linux/amd64 -t cogame-cogolf:local .
 
 - **Releasing.** `coworld-release.yml` only: build → certify → upload policies →
   `upload-coworld`. The order is load-bearing (`upload-policy` needs the local
-  image). Prompt and Jev credentials belong to policy sidecars.
+  image). Prompt credentials belong to policy sidecars.
 - **The policy image.** `compose.yaml` builds two images; the policies in
   `tools/ci/policies.json` carry `"image": "cogame-cogolf-player:latest"`
   explicitly, because the local `<IMAGE>` tag CI builds is the game image.
