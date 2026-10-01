@@ -55,10 +55,6 @@ BEDROCK_MODEL_CANDIDATES = [
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 ]
 DEFAULT_BEDROCK_MODEL = BEDROCK_MODEL_CANDIDATES[0]
-SIDECAR_MODEL_CANDIDATES = [
-    "anthropic/claude-haiku-4.5",
-    "anthropic/claude-sonnet-4.5",
-]
 
 # An implementation of ~60 lines plus five test records; 400/900 truncate
 # mid-function.
@@ -110,6 +106,8 @@ sentence naming the clause you are testing. Emit no prose outside the JSON objec
 
 
 def _provider_from_env() -> str:
+    if os.environ.get("COWORLD_LLM_ENDPOINT"):
+        return "sidecar"
     explicit = os.environ.get("COGAME_LLM_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
@@ -271,8 +269,8 @@ def _invoke(client, model: str, system, user: str, timeout: float):
 
 
 class _BedrockHttpClient:
-    """Minimal InvokeModel client over the Bedrock runtime endpoint (or the
-    hosted sidecar named by AWS_ENDPOINT_URL_BEDROCK_RUNTIME) authenticating
+    """Minimal local InvokeModel client over the Bedrock runtime endpoint (or a
+    locally configured endpoint) authenticating
     with AWS_BEARER_TOKEN_BEDROCK. Exposes the ``messages.create`` shape the
     policy uses so both transports share one call site."""
 
@@ -295,8 +293,7 @@ class _BedrockHttpClient:
         endpoint = (os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "").strip()
                     or f"https://bedrock-runtime.{region}.amazonaws.com")
         self.endpoint = endpoint.rstrip("/")
-        self.token = ("" if os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
-                      else os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip())
+        self.token = os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "").strip()
         self.timeout = timeout
         self.messages = self  # so `client.messages.create(...)` works
 
@@ -310,20 +307,14 @@ class _BedrockHttpClient:
         return bound
 
     def create(self, *, model: str, max_tokens: int, system, messages):
-        sidecar = bool(os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME"))
         body = {"max_tokens": max_tokens, "system": system,
                 "messages": messages}
-        if sidecar:
-            body["model"] = model
-        else:
-            body["anthropic_version"] = "bedrock-2023-05-31"
+        body["anthropic_version"] = "bedrock-2023-05-31"
         req = self._urllib.Request(
-            (f"{self.endpoint}/v1/messages" if sidecar else
-             f"{self.endpoint}/model/{model}/invoke"),
+            f"{self.endpoint}/model/{model}/invoke",
             data=json.dumps(body).encode(), method="POST",
             headers={"content-type": "application/json",
                      "accept": "application/json",
-                     **({"anthropic-version": "2023-06-01"} if sidecar else {}),
                      **({"authorization": f"Bearer {self.token}"}
                         if self.token else {})})
         try:
@@ -346,14 +337,15 @@ class LLMPolicy(Policy):
                  timeout_seconds: float | None = None,
                  strategy: str | None = None,
                  hole_budget_seconds: float | None = None):
-        self.provider = (provider or _provider_from_env()).lower()
+        self.provider = ("sidecar" if os.environ.get("COWORLD_LLM_ENDPOINT")
+                         else provider or _provider_from_env()).lower()
         pinned = model or os.environ.get("COGAME_LLM_MODEL") or (
             os.environ.get("BEDROCK_MODEL") if self.provider == "bedrock"
             else None)
-        if self.provider == "bedrock":
-            candidates = (SIDECAR_MODEL_CANDIDATES
-                          if os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
-                          else BEDROCK_MODEL_CANDIDATES)
+        if self.provider == "sidecar":
+            self._models = [os.environ.get("COWORLD_LLM_MODEL", "anthropic/claude-haiku-4.5")]
+        elif self.provider == "bedrock":
+            candidates = BEDROCK_MODEL_CANDIDATES
             self._models = [m for m in ([pinned] if pinned else [])
                             + candidates if m]
             self._models = list(dict.fromkeys(self._models))
@@ -397,7 +389,12 @@ class LLMPolicy(Policy):
                     or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")):
                 self._client = _BedrockHttpClient(timeout=self.timeout)
                 return self._client
-            if self.provider == "bedrock":
+            if self.provider == "sidecar":
+                client = anthropic.Anthropic(
+                    base_url=os.environ["COWORLD_LLM_ENDPOINT"].rstrip("/"),
+                    api_key="sidecar",
+                )
+            elif self.provider == "bedrock":
                 region = (os.environ.get("AWS_REGION")
                           or os.environ.get("AWS_DEFAULT_REGION")
                           or "us-east-1")
@@ -405,7 +402,7 @@ class LLMPolicy(Policy):
             else:
                 client = anthropic.Anthropic()
             self._client = client.with_options(timeout=self.timeout,
-                                               max_retries=1)
+                                               max_retries=0 if self.provider == "sidecar" else 1)
         except Exception as exc:  # noqa: BLE001
             self._log(f"could not build {self.provider} client ({exc!r}); "
                       f"playing scripted")
