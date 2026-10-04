@@ -94,7 +94,7 @@ async def test_actual_https_owned_dns_preserves_host_and_sni(monkeypatch, tmp_pa
 
     server = await asyncio.start_server(serve, "127.0.0.1", 0, ssl=context)
     port = server.sockets[0].getsockname()[1]
-    endpoint = f"https://localhost:{port}"
+    endpoint = f"https://localhost:{port}/"
     monkeypatch.setenv("COWORLD_LLM_ENDPOINT", endpoint)
     scope = native.LearnerScope(slot=0, model=request.model)
     attempt = native.Attempt(slot=0, stage="submission", request=request)
@@ -110,7 +110,9 @@ async def test_actual_https_owned_dns_preserves_host_and_sni(monkeypatch, tmp_pa
             assert not pending
             for handler in handlers:
                 handler.result()
-    assert scope.endpoint == endpoint and server_names == ["localhost"]
+    assert scope.endpoint == endpoint and attempt.endpoint == endpoint
+    assert server_names == ["localhost"]
+    assert headers_seen[0].startswith(b"POST /v1/messages HTTP/1.1\r\n")
     assert f"host: localhost:{port}\r\n".encode() in headers_seen[0].lower()
     assert attempt.raw_response.encode() == body
     assert (

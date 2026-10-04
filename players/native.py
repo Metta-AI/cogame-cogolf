@@ -75,7 +75,7 @@ class LearnerScope(PrivateModel):
             or parsed.fragment
         ):
             raise ValueError("native learner requires its exact local sidecar endpoint")
-        return value.rstrip("/")
+        return value
 
     purpose: Literal["learner"] = "learner"
     slot: StrictInt = Field(ge=0)
@@ -191,6 +191,7 @@ class Attempt(PrivateModel):
     stage: Literal["submission"]
     protocol: Literal["anthropic_messages"] = "anthropic_messages"
     request: Request
+    endpoint: str | None = Field(default=None, max_length=4096)
     model: str | None = None
     response: str | None = None
     raw_response: str | None = None
@@ -237,6 +238,7 @@ async def complete(
     ):
         raise ValueError("native call identity differs from its frozen request")
     attempt.timeout_ms = timeout * 1000
+    attempt.endpoint = scope.endpoint
     owner = _lifecycle.current_owner.get()
     while owner is not None:
         if owner.stopping:
@@ -267,7 +269,7 @@ async def complete(
             response = await client.send(
                 client.build_request(
                     "POST",
-                    scope.endpoint + "/v1/messages",
+                    scope.endpoint.rstrip("/") + "/v1/messages",
                     headers=headers,
                     content=request.model_dump_json(exclude_none=True).encode(),
                 ),

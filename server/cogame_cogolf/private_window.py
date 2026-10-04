@@ -223,6 +223,7 @@ class Admission:
             previous = rows[attempt.attempt_id]
             for field in (
                 "request",
+                "endpoint",
                 "slot",
                 "purpose",
                 "stage",

@@ -143,6 +143,7 @@ def test_started_body_prefix_is_monotone_and_unknown_window_cannot_start():
     owner.progress(window.request_id, attempt)
     observed = attempt.model_copy(
         update={
+            "endpoint": "http://localhost:9100/",
             "http_status": 200,
             "response_complete": False,
             "response_reader_joined": False,
@@ -164,6 +165,11 @@ def test_started_body_prefix_is_monotone_and_unknown_window_cannot_start():
     with pytest.raises(ValueError, match="header pairs"):
         owner.progress(
             window.request_id, observed.model_copy(update={"received_header_pairs": []})
+        )
+    with pytest.raises(ValueError, match="immutable metadata"):
+        owner.progress(
+            window.request_id,
+            observed.model_copy(update={"endpoint": "http://localhost:9101"}),
         )
     owner.close_window(window.request_id)
     with pytest.raises(ValueError, match="outside its admission window"):
