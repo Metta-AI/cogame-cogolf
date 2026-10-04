@@ -12,10 +12,10 @@ import subprocess
 import pytest
 from cogame_cogolf import contract
 from cogame_cogolf.engine import Engine
-from cogame_cogolf.replay import (FORMAT, VERSION, Replay, ReplayError,
-                                  ReplayWriter)
+from cogame_cogolf.replay import FORMAT, VERSION, Replay, ReplayError, ReplayWriter
 from cogame_cogolf.results import EpisodeResult, SeatOutcome, results_doc
 from cogame_cogolf.sandbox import Sandbox
+
 from tests.conftest import REPO_ROOT, make_config
 from tests.fakes import FakeSandbox, ScriptedSource
 
@@ -32,11 +32,18 @@ def nasty_reply(hole, payload):
         "hole": hole,
         "impl": f"# {EMOJI} {CJK}\ndef solve(*args):\n    return None\n",
         "tests": [
-            {"name": "n" * (contract.MAX_TEST_NAME_CHARS - 1) + EMOJI,
-             "args": [[]], "expect": None,
-             "why": CJK * 40 + LONE_SURROGATE},
-            {"name": LONE_SURROGATE + CJK, "args": [[1]], "expect": 1,
-             "why": EMOJI * 30},
+            {
+                "name": "n" * (contract.MAX_TEST_NAME_CHARS - 1) + EMOJI,
+                "args": [[]],
+                "expect": None,
+                "why": CJK * 40 + LONE_SURROGATE,
+            },
+            {
+                "name": LONE_SURROGATE + CJK,
+                "args": [[1]],
+                "expect": 1,
+                "why": EMOJI * 30,
+            },
         ],
         "note": ("z" * (contract.MAX_NOTE_CHARS - 1)) + EMOJI + LONE_SURROGATE,
     }
@@ -45,12 +52,14 @@ def nasty_reply(hole, payload):
 def build_replay(**overrides):
     config = make_config(holes=2, seed=5, **overrides)
     writer = ReplayWriter(config, config.seed)
-    engine = Engine(config,
-                    [ScriptedSource("literalist", reply=nasty_reply),
-                     ScriptedSource("pedant")],
-                    Sandbox(call_cpu_seconds=1.0, batch_seconds=8.0),
-                    seed=config.seed,
-                    on_event=writer.append_event, on_hole=writer.append_hole)
+    engine = Engine(
+        config,
+        [ScriptedSource("literalist", reply=nasty_reply), ScriptedSource("pedant")],
+        Sandbox(call_cpu_seconds=1.0, batch_seconds=8.0),
+        seed=config.seed,
+        on_event=writer.append_event,
+        on_hole=writer.append_hole,
+    )
     result = asyncio.run(engine.run())
     doc = results_doc(config, result)
     return writer.finalize(doc), doc
@@ -60,7 +69,7 @@ def test_the_bytes_parse_under_a_strict_utf8_json_reader():
     """No error handler, no surrogatepass: the bytes must be clean UTF-8.
     A byte-boundary truncation anywhere in the writer fails right here."""
     blob, _doc = build_replay()
-    parsed = json.loads(blob.decode("utf-8"))     # strict on both sides
+    parsed = json.loads(blob.decode("utf-8"))  # strict on both sides
     assert parsed["format"] == FORMAT
     text = blob.decode("utf-8")
     assert LONE_SURROGATE not in text
@@ -89,19 +98,23 @@ def test_the_broken_reason_is_sanitised_like_every_other_replay_string():
     class BrokenImpls(FakeSandbox):
         """Both submitted impls fail to load; the reference still runs."""
 
-        def run_reference(self, source, calls):
+        async def run_reference(self, source, calls):
             return FakeSandbox()._run(source, calls)
 
     reason = "\x07boom" + LONE_SURROGATE + "\u0007" + "z" * 400
     config = make_config(holes=1)
     writer = ReplayWriter(config, config.seed)
-    engine = Engine(config,
-                    [ScriptedSource("literalist"), ScriptedSource("pedant")],
-                    BrokenImpls(broken=reason), seed=config.seed,
-                    on_event=writer.append_event, on_hole=writer.append_hole)
+    engine = Engine(
+        config,
+        [ScriptedSource("literalist"), ScriptedSource("pedant")],
+        BrokenImpls(broken=reason),
+        seed=config.seed,
+        on_event=writer.append_event,
+        on_hole=writer.append_hole,
+    )
     result = asyncio.run(engine.run())
     blob = writer.finalize(results_doc(config, result))
-    doc = json.loads(blob.decode("utf-8"))          # strict UTF-8 both sides
+    doc = json.loads(blob.decode("utf-8"))  # strict UTF-8 both sides
 
     for seat in doc["holes"][0]["seats"]:
         assert seat["broken"] is True
@@ -140,8 +153,7 @@ def test_at_least_one_event_of_every_kind():
     doc = json.loads(blob.decode("utf-8"))
     kinds = {event["kind"] for event in doc["events"]}
     assert kinds == set(contract.EVENT_KINDS)
-    outcomes = {e["outcome"] for e in doc["events"]
-                if e["kind"] == "test_verdict"}
+    outcomes = {e["outcome"] for e in doc["events"] if e["kind"] == "test_verdict"}
     assert outcomes <= set(contract.SHOT_OUTCOMES)
     assert "breach" in outcomes
 
@@ -184,9 +196,17 @@ def test_a_replay_with_no_holes_still_writes():
     config = make_config()
     writer = ReplayWriter(config, 1)
     seats = (SeatOutcome(), SeatOutcome())
-    doc = results_doc(config, EpisodeResult(
-        seats=seats, reason="harness_fault", wall_clock_seconds=0.5,
-        holes_played=0, seed=1, deck_version="core-1"))
+    doc = results_doc(
+        config,
+        EpisodeResult(
+            seats=seats,
+            reason="harness_fault",
+            wall_clock_seconds=0.5,
+            holes_played=0,
+            seed=1,
+            deck_version="core-1",
+        ),
+    )
     blob = writer.finalize(doc)
     parsed = Replay.parse(blob)
     assert parsed.holes == [] and parsed.result["reason"] == "harness_fault"
@@ -208,8 +228,17 @@ def test_a_replay_with_no_holes_still_writes():
 
 # The keys the hole record keeps for each shot (engine.py _hole_record); a
 # test_verdict event carries these plus hole/slot/target_slot/kind.
-TEST_KEYS = ("idx", "name", "args", "expect", "why", "legal", "legal_reason",
-             "outcome", "observed")
+TEST_KEYS = (
+    "idx",
+    "name",
+    "args",
+    "expect",
+    "why",
+    "legal",
+    "legal_reason",
+    "outcome",
+    "observed",
+)
 
 
 def fold(doc):
@@ -220,16 +249,23 @@ def fold(doc):
     par_result sets the audit count, hole_score sets the running score and
     episode_end ends the match.
     """
-    state = {"hole": 0, "hole_index": -1, "cumulative": [0, 0],
-             "shots": [[], []], "par": [None, None],
-             "fallback": [None, None], "done": False}
+    state = {
+        "hole": 0,
+        "hole_index": -1,
+        "cumulative": [0, 0],
+        "shots": [[], []],
+        "par": [None, None],
+        "fallback": [None, None],
+        "done": False,
+    }
     for index, event in enumerate(doc["events"]):
         kind = event["kind"]
         if kind == "hole_start":
             state["hole"] = event["hole"]
             state["hole_index"] = next(
-                (i for i, h in enumerate(doc["holes"])
-                 if h["hole"] == event["hole"]), -1)
+                (i for i, h in enumerate(doc["holes"]) if h["hole"] == event["hole"]),
+                -1,
+            )
             state["shots"] = [[], []]
             state["par"] = [None, None]
             state["fallback"] = [None, None]
@@ -257,7 +293,7 @@ def test_folding_the_events_reproduces_the_recorded_per_hole_state():
     previous_cumulative = [0, 0]
     for index, event, state in fold(doc):
         if state["hole_index"] < 0:
-            continue                      # before the first hole_start
+            continue  # before the first hole_start
         record = doc["holes"][state["hole_index"]]
         assert record["hole"] == state["hole"]
         for slot, seat in enumerate(record["seats"]):
@@ -265,8 +301,11 @@ def test_folding_the_events_reproduces_the_recorded_per_hole_state():
             # every shot so far is this seat's next recorded shot, in order
             assert len(fired) <= len(seat["tests"]), (index, slot)
             for shot, recorded in zip(fired, seat["tests"]):
-                assert {k: shot[k] for k in TEST_KEYS} == recorded, \
-                    (index, slot, shot["idx"])
+                assert {k: shot[k] for k in TEST_KEYS} == recorded, (
+                    index,
+                    slot,
+                    shot["idx"],
+                )
             # not yet seen (None) or already agreeing with the record
             assert state["par"][slot] in (None, seat["par_fails"])
             assert state["fallback"][slot] in (None, seat["fallback"])
@@ -278,8 +317,9 @@ def test_folding_the_events_reproduces_the_recorded_per_hole_state():
             assert state["cumulative"] == record["cumulative"]
             # the hole is fully re-derived at its last beat
             for slot, seat in enumerate(record["seats"]):
-                assert [{k: s[k] for k in TEST_KEYS}
-                        for s in state["shots"][slot]] == seat["tests"]
+                assert [
+                    {k: s[k] for k in TEST_KEYS} for s in state["shots"][slot]
+                ] == seat["tests"]
                 assert state["par"][slot] == seat["par_fails"]
                 assert state["fallback"][slot] == seat["fallback"]
             previous_cumulative = list(record["cumulative"])
@@ -288,8 +328,7 @@ def test_folding_the_events_reproduces_the_recorded_per_hole_state():
 
     assert scored == len(doc["holes"])
     assert state["done"], "the fold never saw episode_end"
-    assert state["cumulative"] == results["scores"] == \
-        doc["holes"][-1]["cumulative"]
+    assert state["cumulative"] == results["scores"] == doc["holes"][-1]["cumulative"]
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
@@ -321,8 +360,13 @@ const last = RD.stateAt(doc, doc.events.length - 1);
 console.log(JSON.stringify({{holes: out, final_cumulative: last.cumulative,
                             done: last.done}}));
 """
-    proc = subprocess.run([shutil.which("node"), "-e", script],
-                          capture_output=True, text=True, timeout=60)
+    proc = subprocess.run(
+        [shutil.which("node"), "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     folded = json.loads(proc.stdout)
     states = folded["holes"]

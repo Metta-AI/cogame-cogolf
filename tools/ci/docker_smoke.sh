@@ -39,7 +39,6 @@
 #                              job loads it in a real browser -- that is the
 #                              only replay in CI that is known to be readable
 #                              by this game's own viewer.
-#   ANTHROPIC_API_KEY          if set, forwarded to player containers only
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -205,9 +204,6 @@ docker run -d --name "${prefix}-game" \
 for ((slot = 0; slot < seats; slot++)); do
   eval "penv=( $(cat "${work_dir}/env-${slot}.args") )"
   eval "pcmd=( $(cat "${work_dir}/cmd-${slot}.args") )"
-  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-    penv+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
-  fi
   docker run -d --name "${prefix}-p${slot}" --network "${network}" \
     -e COWORLD_PLAYER_WS_URL="ws://${prefix}-game:${port}/player?slot=${slot}&token=token-${slot}" \
     ${penv[@]+"${penv[@]}"} \

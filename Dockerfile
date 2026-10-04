@@ -7,7 +7,7 @@
 # is architecture-independent.
 #
 # Stage 2 (player) is the policy image: python:3.11-slim + aiohttp + the
-# Claude SDKs + players/ + the stdlib-only half of the server package
+# native HTTP dependencies + players/ + the stdlib-only half of the server package
 # (contract, specs, baseline) that the scripted policies and the harness
 # fallback need. ONE image, ONE entrypoint (/bin/cogolf-player), the policy
 # chosen by PLAYER_SCRIPTED / PLAYER_PROMPT.
@@ -61,9 +61,23 @@ RUN bash viewer/build_viewer.sh && test -f viewer/dist/index.html
 FROM python:3.11-slim AS player
 
 WORKDIR /workspace
-RUN pip install --no-cache-dir "aiohttp>=3.10" "anthropic>=0.40" "boto3>=1.35"
+RUN pip install --no-cache-dir "aiohttp>=3.10" "httpx==0.28.1" "httpcore==1.0.9" "pydantic>=2.9,<3"
 COPY players/ players/
-COPY server/cogame_cogolf/ server/cogame_cogolf/
+# A policy image contains public grammar/baseline tables, never hidden references,
+# par tests, the engine, private journals or deployment credentials.
+COPY server/cogame_cogolf/__init__.py \
+     server/cogame_cogolf/baseline.py \
+     server/cogame_cogolf/contract.py \
+     server/cogame_cogolf/guidance.py \
+     server/cogame_cogolf/lifecycle.py \
+     server/cogame_cogolf/native_profile.py \
+     server/cogame_cogolf/policy_tables.py \
+     server/cogame_cogolf/private_window.py \
+     server/cogame_cogolf/prompt.py \
+     server/cogame_cogolf/submission.py \
+     server/cogame_cogolf/values.py \
+     server/cogame_cogolf/version.py \
+     server/cogame_cogolf/
 RUN printf '#!/bin/sh\nexec python -m players.main "$@"\n' > /bin/cogolf-player && \
     chmod +x /bin/cogolf-player
 ENV PYTHONPATH="/workspace/server:/workspace" \
@@ -78,7 +92,7 @@ FROM python:3.11-slim AS game
 
 WORKDIR /workspace
 
-RUN pip install --no-cache-dir "aiohttp>=3.10" && \
+RUN pip install --no-cache-dir "aiohttp>=3.10" "httpx==0.28.1" "httpcore==1.0.9" "pydantic>=2.9,<3" && \
     useradd --system --uid 4242 --no-create-home --shell /usr/sbin/nologin cogolf
 
 COPY server/ server/

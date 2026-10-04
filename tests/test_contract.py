@@ -17,8 +17,11 @@ PROTOCOL_MD = (REPO_ROOT / "docs" / "PROTOCOL.md").read_text()
 
 
 def _constants() -> dict:
-    return {name: getattr(contract, name) for name in sorted(dir(contract))
-            if name.isupper()}
+    return {
+        name: getattr(contract, name)
+        for name in sorted(dir(contract))
+        if name.isupper()
+    }
 
 
 def test_contract_has_no_third_party_imports():
@@ -34,25 +37,36 @@ def test_contract_has_no_third_party_imports():
 
 
 def test_contract_matches_golden_manifest():
-    lines = [f"{name} = {json.dumps(value)}"
-             for name, value in _constants().items()]
+    lines = [f"{name} = {json.dumps(value)}" for name, value in _constants().items()]
     expected = GOLDEN.read_text().splitlines()
     assert lines == expected, (
         "contract.py drifted from tests/contract_manifest.txt; update all "
         "four surfaces (contract.py, contract_manifest.txt, docs/PROTOCOL.md, "
-        "players/)")
+        "players/)"
+    )
 
 
 def test_server_uses_contract_constants():
-    assert PROTOCOL == contract.PROTOCOL == "cogame.cogolf.v1"
+    assert PROTOCOL == contract.PROTOCOL == "cogame.cogolf.v2"
     assert results.FALLBACK_CAUSES == contract.FALLBACK_CAUSES
     assert results.REASONS == contract.REASONS
     assert results.RESULT_KEYS == set(contract.RESULT_KEYS)
 
 
 def test_the_protocol_page_documents_every_message_type():
-    for name in ("MSG_WELCOME", "MSG_OBSERVATION", "MSG_SUBMISSION",
-                 "MSG_DONE", "MSG_STATUS", "MSG_PROGRESS"):
+    for name in (
+        "MSG_WELCOME",
+        "MSG_OBSERVATION",
+        "MSG_SUBMISSION",
+        "MSG_DONE",
+        "MSG_STATUS",
+        "MSG_PROGRESS",
+        "MSG_ACTION",
+        "MSG_ATTEMPT_STARTED",
+        "MSG_STOP",
+        "MSG_STOPPED",
+        "MSG_EVIDENCE_RECEIVED",
+    ):
         assert getattr(contract, name) in PROTOCOL_MD, name
     assert contract.PROTOCOL in PROTOCOL_MD
     for cause in contract.FALLBACK_CAUSES:
@@ -62,12 +76,27 @@ def test_the_protocol_page_documents_every_message_type():
 
 
 def test_the_player_harness_speaks_the_same_strings():
-    client = (REPO_ROOT / "players" / "client.py").read_text()
-    assert 'PROTOCOL = "cogame.cogolf.v1"' in client
-    assert 'MSG_SUBMISSION = "submission"' in client
-    for name in ("MAX_IMPL_CHARS", "MAX_TESTS_PER_HOLE", "MAX_MESSAGE_BYTES",
-                 "MAX_TEST_NAME_CHARS", "MAX_WHY_CHARS", "MAX_NOTE_CHARS"):
-        assert name in client, name
+    from cogame_cogolf.private_window import (
+        Action,
+        EvidenceReceived,
+        Ready,
+        Started,
+        Stop,
+        Stopped,
+    )
+
+    from players import client
+
+    assert client.PROTOCOL == contract.PROTOCOL
+    for model, name in (
+        (Ready, "MSG_READY"),
+        (Action, "MSG_ACTION"),
+        (Started, "MSG_ATTEMPT_STARTED"),
+        (Stop, "MSG_STOP"),
+        (Stopped, "MSG_STOPPED"),
+        (EvidenceReceived, "MSG_EVIDENCE_RECEIVED"),
+    ):
+        assert model.model_fields["type"].default == getattr(contract, name)
 
 
 def test_the_alias_space_is_two_seats():

@@ -20,6 +20,8 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
+from .native_profile import NativeProfile
+
 SEATS = 2
 
 DEFAULT_DECK = "core"
@@ -40,13 +42,27 @@ DEFAULT_PLAYER_CONNECT_TIMEOUT_SECONDS = 90.0
 # the play budget is 60 % of it. 700 s leaves room for artifact writes.
 DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 700.0
 
-KNOWN_KEYS = frozenset({
-    "tokens", "players", "num_agents", "deck", "holes", "seed",
-    "hole_deadline_seconds", "retry_deadline_seconds", "max_tests_per_hole",
-    "par_tests_per_hole", "call_cpu_seconds", "sandbox_batch_seconds",
-    "hole_reserve_seconds", "min_hole_spacing_seconds",
-    "player_connect_timeout_seconds", "wall_clock_budget_seconds",
-})
+KNOWN_KEYS = frozenset(
+    {
+        "tokens",
+        "players",
+        "num_agents",
+        "deck",
+        "holes",
+        "seed",
+        "hole_deadline_seconds",
+        "retry_deadline_seconds",
+        "max_tests_per_hole",
+        "par_tests_per_hole",
+        "call_cpu_seconds",
+        "sandbox_batch_seconds",
+        "hole_reserve_seconds",
+        "min_hole_spacing_seconds",
+        "player_connect_timeout_seconds",
+        "wall_clock_budget_seconds",
+        "native_profiles",
+    }
+)
 
 
 class ConfigError(ValueError):
@@ -75,16 +91,18 @@ class GameConfig:
     min_hole_spacing_seconds: float
     player_connect_timeout_seconds: float
     wall_clock_budget_seconds: float
+    native_profiles: tuple[NativeProfile, NativeProfile]
 
     @property
     def num_seats(self) -> int:
         return len(self.players)
 
     @classmethod
-    def from_dict(cls, data) -> "GameConfig":
+    def from_dict(cls, data) -> GameConfig:
         if not isinstance(data, dict):
             raise ConfigError(
-                f"config must be a JSON object, got {type(data).__name__}")
+                f"config must be a JSON object, got {type(data).__name__}"
+            )
         unknown = sorted(set(data) - KNOWN_KEYS)
         if unknown:
             raise ConfigError(f"unknown config keys: {unknown}")
@@ -94,32 +112,37 @@ class GameConfig:
             raise ConfigError("config requires a non-empty 'players' array")
         if len(players_raw) != SEATS:
             raise ConfigError(
-                f"cogolf is a {SEATS}-seat game; got {len(players_raw)} players")
+                f"cogolf is a {SEATS}-seat game; got {len(players_raw)} players"
+            )
         players = []
         for i, entry in enumerate(players_raw):
-            if not isinstance(entry, dict) or set(entry) != {"name"} \
-                    or not isinstance(entry["name"], str) or not entry["name"]:
+            if (
+                not isinstance(entry, dict)
+                or set(entry) != {"name"}
+                or not isinstance(entry["name"], str)
+                or not entry["name"]
+            ):
                 raise ConfigError(
-                    f"players[{i}] must be an object with exactly a "
-                    f"non-empty 'name'")
+                    f"players[{i}] must be an object with exactly a non-empty 'name'"
+                )
             players.append(PlayerConfig(name=entry["name"]))
 
         tokens_raw = data.get("tokens")
-        if not isinstance(tokens_raw, list) or \
-                not all(isinstance(t, str) and t for t in tokens_raw):
-            raise ConfigError(
-                "config requires a 'tokens' array of non-empty strings")
+        if not isinstance(tokens_raw, list) or not all(
+            isinstance(t, str) and t for t in tokens_raw
+        ):
+            raise ConfigError("config requires a 'tokens' array of non-empty strings")
         if len(tokens_raw) != len(players):
             raise ConfigError(
-                f"tokens length {len(tokens_raw)} != players length "
-                f"{len(players)}")
+                f"tokens length {len(tokens_raw)} != players length {len(players)}"
+            )
 
         if "num_agents" in data:
             num_agents = _int_field(data, "num_agents", SEATS)
             if num_agents != SEATS:
                 raise ConfigError(
-                    f"num_agents must be {SEATS} (cogolf is two-seat), got "
-                    f"{num_agents}")
+                    f"num_agents must be {SEATS} (cogolf is two-seat), got {num_agents}"
+                )
 
         deck = data.get("deck", DEFAULT_DECK)
         if not isinstance(deck, str) or not deck:
@@ -127,50 +150,74 @@ class GameConfig:
 
         holes = _int_field(data, "holes", DEFAULT_HOLES)
         if not 1 <= holes <= MAX_HOLES:
-            raise ConfigError(
-                f"holes must be in [1, {MAX_HOLES}], got {holes}")
+            raise ConfigError(f"holes must be in [1, {MAX_HOLES}], got {holes}")
 
         seed = _int_field(data, "seed", DEFAULT_SEED)
         if seed < 0:
             raise ConfigError(f"seed must be >= 0, got {seed}")
 
         hole_deadline = _number_field(
-            data, "hole_deadline_seconds", DEFAULT_HOLE_DEADLINE_SECONDS,
-            positive=True)
+            data, "hole_deadline_seconds", DEFAULT_HOLE_DEADLINE_SECONDS, positive=True
+        )
         retry_deadline = _number_field(
-            data, "retry_deadline_seconds", DEFAULT_RETRY_DEADLINE_SECONDS,
-            positive=True)
+            data,
+            "retry_deadline_seconds",
+            DEFAULT_RETRY_DEADLINE_SECONDS,
+            positive=True,
+        )
 
-        max_tests = _int_field(data, "max_tests_per_hole",
-                               DEFAULT_MAX_TESTS_PER_HOLE)
+        max_tests = _int_field(data, "max_tests_per_hole", DEFAULT_MAX_TESTS_PER_HOLE)
         if not 1 <= max_tests <= MAX_MAX_TESTS_PER_HOLE:
             raise ConfigError(
                 f"max_tests_per_hole must be in [1, {MAX_MAX_TESTS_PER_HOLE}], "
-                f"got {max_tests}")
-        par_tests = _int_field(data, "par_tests_per_hole",
-                               DEFAULT_PAR_TESTS_PER_HOLE)
+                f"got {max_tests}"
+            )
+        par_tests = _int_field(data, "par_tests_per_hole", DEFAULT_PAR_TESTS_PER_HOLE)
         if par_tests != DEFAULT_PAR_TESTS_PER_HOLE:
             raise ConfigError(
                 f"par_tests_per_hole is fixed by the deck at "
-                f"{DEFAULT_PAR_TESTS_PER_HOLE}, got {par_tests}")
+                f"{DEFAULT_PAR_TESTS_PER_HOLE}, got {par_tests}"
+            )
 
-        call_cpu = _number_field(data, "call_cpu_seconds",
-                                 DEFAULT_CALL_CPU_SECONDS, positive=True)
-        batch = _number_field(data, "sandbox_batch_seconds",
-                              DEFAULT_SANDBOX_BATCH_SECONDS, positive=True)
-        reserve = _number_field(data, "hole_reserve_seconds",
-                                DEFAULT_HOLE_RESERVE_SECONDS, positive=False)
-        spacing = _number_field(data, "min_hole_spacing_seconds",
-                                DEFAULT_MIN_HOLE_SPACING_SECONDS,
-                                positive=False)
+        call_cpu = _number_field(
+            data, "call_cpu_seconds", DEFAULT_CALL_CPU_SECONDS, positive=True
+        )
+        batch = _number_field(
+            data, "sandbox_batch_seconds", DEFAULT_SANDBOX_BATCH_SECONDS, positive=True
+        )
+        reserve = _number_field(
+            data, "hole_reserve_seconds", DEFAULT_HOLE_RESERVE_SECONDS, positive=False
+        )
+        spacing = _number_field(
+            data,
+            "min_hole_spacing_seconds",
+            DEFAULT_MIN_HOLE_SPACING_SECONDS,
+            positive=False,
+        )
         connect_timeout = _number_field(
-            data, "player_connect_timeout_seconds",
-            DEFAULT_PLAYER_CONNECT_TIMEOUT_SECONDS, positive=False)
+            data,
+            "player_connect_timeout_seconds",
+            DEFAULT_PLAYER_CONNECT_TIMEOUT_SECONDS,
+            positive=False,
+        )
         budget = _number_field(
-            data, "wall_clock_budget_seconds",
-            DEFAULT_WALL_CLOCK_BUDGET_SECONDS, positive=True)
+            data,
+            "wall_clock_budget_seconds",
+            DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
+            positive=True,
+        )
+
+        profiles = tuple(
+            NativeProfile.model_validate(profile)
+            for profile in data.get("native_profiles", [{}, {}])
+        )
+        if len(profiles) != SEATS:
+            raise ConfigError(
+                "native_profiles must configure exactly two external seats"
+            )
 
         return cls(
+            native_profiles=(profiles[0], profiles[1]),
             players=tuple(players),
             tokens=tuple(tokens_raw),
             deck=deck,
@@ -189,7 +236,7 @@ class GameConfig:
         )
 
     @classmethod
-    def from_file_uri(cls, uri: str) -> "GameConfig":
+    def from_file_uri(cls, uri: str) -> GameConfig:
         """Parse a config from a local ``file://`` URI or plain path."""
         path = uri.removeprefix("file://")
         try:
@@ -199,8 +246,7 @@ class GameConfig:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise ConfigError(
-                f"config at {uri} is not valid JSON: {exc}") from exc
+            raise ConfigError(f"config at {uri} is not valid JSON: {exc}") from exc
         return cls.from_dict(data)
 
     def resolve_seed(self) -> int:
@@ -214,8 +260,8 @@ class GameConfig:
     def to_dict(self) -> dict:
         """Fully-resolved config for the replay document.
 
-        Tokens are deliberately excluded: replays are public artifacts,
-        tokens are per-episode player credentials.
+        Tokens and native prompt profiles are deliberately excluded: replays are
+        public artifacts; credentials and per-seat strategies remain private.
         """
         return {
             "players": [{"name": p.name} for p in self.players],
@@ -231,8 +277,7 @@ class GameConfig:
             "sandbox_batch_seconds": self.sandbox_batch_seconds,
             "hole_reserve_seconds": self.hole_reserve_seconds,
             "min_hole_spacing_seconds": self.min_hole_spacing_seconds,
-            "player_connect_timeout_seconds":
-                self.player_connect_timeout_seconds,
+            "player_connect_timeout_seconds": self.player_connect_timeout_seconds,
             "wall_clock_budget_seconds": self.wall_clock_budget_seconds,
         }
 
@@ -244,11 +289,13 @@ def _int_field(data: dict, key: str, default: int) -> int:
     return value
 
 
-def _number_field(data: dict, key: str, default: float, *,
-                  positive: bool) -> float:
+def _number_field(data: dict, key: str, default: float, *, positive: bool) -> float:
     value = data.get(key, default)
-    if not isinstance(value, (int, float)) or isinstance(value, bool) \
-            or not math.isfinite(value):
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+    ):
         raise ConfigError(f"{key} must be a finite number, got {value!r}")
     if positive and value <= 0:
         raise ConfigError(f"{key} must be positive, got {value!r}")

@@ -22,14 +22,16 @@ started without ``-I``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-import subprocess
+import shutil
 import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import lifecycle
 from .contract import MAX_BROKEN_REASON_CHARS
 from .values import BadValue, canon, equal  # noqa: F401  (re-exported)
 
@@ -40,8 +42,7 @@ DEFAULT_CALL_CPU_SECONDS = 1.0
 DEFAULT_BATCH_SECONDS = 6.0
 REFERENCE_CPU_SECONDS = 2.0
 MAX_STDERR_CHARS = 2000
-# Belt and braces around subprocess.run's own timeout.
-SPAWN_GRACE_SECONDS = 5.0
+MAX_RECEIVED_STREAM_BYTES = 4 * 1024 * 1024
 
 
 class SandboxError(RuntimeError):
@@ -51,16 +52,18 @@ class SandboxError(RuntimeError):
 @dataclass
 class CallResult:
     """One ``solve(*args)`` call."""
+
     ok: bool
     value: object = None
-    kind: str = ""      # error | timeout | bad_value | broken
+    kind: str = ""  # error | timeout | bad_value | broken
     text: str = ""
 
 
 @dataclass
 class BatchResult:
     """One (implementation, batch-of-calls) run."""
-    broken: str | None = None          # reason when the impl never loaded
+
+    broken: str | None = None  # reason when the impl never loaded
     results: dict[int, CallResult] = field(default_factory=dict)
     stderr: str = ""
 
@@ -70,40 +73,49 @@ class BatchResult:
             return found
         if self.broken:
             return CallResult(ok=False, kind="broken", text=self.broken)
-        return CallResult(ok=False, kind="timeout",
-                          text="the sandbox batch ended before this call")
+        return CallResult(
+            ok=False, kind="timeout", text="the sandbox batch ended before this call"
+        )
 
 
 def _clip(text: str, limit: int = MAX_BROKEN_REASON_CHARS) -> str:
     text = str(text).replace("\n", " ").strip()
-    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+    return text if len(text) <= limit else text[: limit - 1] + "\u2026"
 
 
 class Sandbox:
     """Runs implementations. One instance per episode (config carrier)."""
 
-    def __init__(self, call_cpu_seconds: float = DEFAULT_CALL_CPU_SECONDS,
-                 batch_seconds: float = DEFAULT_BATCH_SECONDS,
-                 python: str | None = None):
+    def __init__(
+        self,
+        call_cpu_seconds: float = DEFAULT_CALL_CPU_SECONDS,
+        batch_seconds: float = DEFAULT_BATCH_SECONDS,
+        python: str | None = None,
+    ):
         self.call_cpu_seconds = float(call_cpu_seconds)
         self.batch_seconds = float(batch_seconds)
         self.python = python or sys.executable
 
-    def run(self, source: str, calls: list[dict], *,
-            cpu_seconds: float | None = None) -> BatchResult:
-        """Run ``solve(*args)`` for every call against ``source``.
+    async def run(
+        self, source: str, calls: list[dict], *, cpu_seconds: float | None = None
+    ) -> BatchResult:
+        """Own the sandbox process and streams until actual exit and EOF.
 
-        ``calls`` is ``[{"id": int, "args": list}, ...]``. Never raises for
-        anything the submitted code did; :class:`SandboxError` only when the
-        interpreter itself could not be started.
+        Wall timeout kills this owned process. Received NDJSON prefixes survive.
+        Unsettled owners retain their private working directory and capture.
         """
-        job = json.dumps({
-            "source": source,
-            "calls": [{"id": int(c["id"]), "args": list(c.get("args") or [])}
-                      for c in calls],
-            "cpu_seconds": float(self.call_cpu_seconds
-                                 if cpu_seconds is None else cpu_seconds),
-        })
+        job = json.dumps(
+            {
+                "source": source,
+                "calls": [
+                    {"id": int(c["id"]), "args": list(c.get("args") or [])}
+                    for c in calls
+                ],
+                "cpu_seconds": float(
+                    self.call_cpu_seconds if cpu_seconds is None else cpu_seconds
+                ),
+            }
+        ).encode()
         env = {
             "PYTHONPATH": SERVER_DIR,
             "PATH": "/usr/bin:/bin",
@@ -112,32 +124,134 @@ class Sandbox:
             "PYTHONDONTWRITEBYTECODE": "1",
             "COGOLF_SANDBOX_UID": os.environ.get("COGOLF_SANDBOX_UID", "65534"),
         }
-        with tempfile.TemporaryDirectory(prefix="cogolf-sandbox-") as workdir:
-            try:
-                proc = subprocess.run(
-                    [self.python, "-I", "-S", str(RUNNER)],
-                    input=job, capture_output=True, text=True, cwd=workdir,
-                    env=env, timeout=self.batch_seconds, check=False)
-                stdout, stderr = proc.stdout, proc.stderr
-            except subprocess.TimeoutExpired as expired:
-                stdout = _as_text(expired.stdout)
-                stderr = _as_text(expired.stderr)
-            except OSError as exc:
-                raise SandboxError(
-                    f"cannot spawn the sandbox runner: {exc}") from exc
-        return _parse(stdout, stderr)
+        workdir = Path(tempfile.mkdtemp(prefix="cogolf-sandbox-"))
+        stdout, stderr = bytearray(), bytearray()
+        deadline = asyncio.get_running_loop().time() + self.batch_seconds
+        spawned = lifecycle.owned_task(
+            asyncio.create_subprocess_exec(
+                self.python,
+                "-I",
+                "-S",
+                str(RUNNER),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=workdir,
+                env=env,
+                close_fds=True,
+            )
+        )
+        stream_tasks: set[asyncio.Task] = set()
+        proc = None
+        joined = False
+        output_limit = asyncio.Event()
+        limit_waiter = lifecycle.owned_task(output_limit.wait())
 
-    def run_reference(self, source: str, calls: list[dict]) -> BatchResult:
+        async def receive(
+            stream: asyncio.StreamReader, capture: bytearray, path: Path
+        ) -> None:
+            with path.open("wb", buffering=0) as received:
+                while chunk := await stream.read(65536):
+                    prefix = chunk[
+                        : max(0, MAX_RECEIVED_STREAM_BYTES + 1 - len(capture))
+                    ]
+                    capture.extend(prefix)
+                    received.write(prefix)
+                    if len(capture) > MAX_RECEIVED_STREAM_BYTES:
+                        output_limit.set()
+                    # Drain already-buffered overflow after the child is killed.
+                    # Otherwise a paused pipe can prevent actual transport EOF.
+
+        async def send(process: asyncio.subprocess.Process) -> None:
+            assert process.stdin is not None
+            process.stdin.write(job)
+            await process.stdin.drain()
+            process.stdin.close()
+            await process.stdin.wait_closed()
+
+        try:
+            done, _ = await asyncio.wait(
+                {spawned}, timeout=max(0, deadline - asyncio.get_running_loop().time())
+            )
+            if not done:
+                raise lifecycle.OwnershipUnsettled(
+                    "sandbox acquisition exceeded batch deadline"
+                )
+            error = spawned.exception()
+            if error is not None:
+                raise SandboxError("cannot spawn the sandbox runner") from error
+            proc = spawned.result()
+            assert proc.stdout is not None and proc.stderr is not None
+            stream_tasks = {
+                lifecycle.owned_task(
+                    receive(proc.stdout, stdout, workdir / "stdout.received")
+                ),
+                lifecycle.owned_task(
+                    receive(proc.stderr, stderr, workdir / "stderr.received")
+                ),
+                lifecycle.owned_task(send(proc)),
+                lifecycle.owned_task(proc.wait()),
+            }
+            pending = set(stream_tasks)
+            while pending and not output_limit.is_set():
+                done, _ = await asyncio.wait(
+                    pending | {limit_waiter},
+                    timeout=max(0, deadline - asyncio.get_running_loop().time()),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not done:
+                    break
+                pending -= done
+        finally:
+            drain_deadline = lifecycle.cleanup_deadline()
+            waiter_joined = await lifecycle.settle(
+                {limit_waiter}, drain_deadline, cancel=True
+            )
+            spawn_joined = await lifecycle.settle(
+                {spawned}, drain_deadline, cancel=False
+            )
+            if spawn_joined and not spawned.cancelled() and spawned.exception() is None:
+                proc = spawned.result()
+                if proc.returncode is None:
+                    proc.kill()
+                if not stream_tasks:
+                    assert proc.stdout is not None and proc.stderr is not None
+                    stream_tasks = {
+                        lifecycle.owned_task(
+                            receive(proc.stdout, stdout, workdir / "stdout.received")
+                        ),
+                        lifecycle.owned_task(
+                            receive(proc.stderr, stderr, workdir / "stderr.received")
+                        ),
+                        lifecycle.owned_task(proc.wait()),
+                    }
+                    assert proc.stdin is not None
+                    proc.stdin.close()
+                joined = await lifecycle.settle(
+                    stream_tasks, drain_deadline, cancel=False
+                )
+                if not joined:
+                    await lifecycle.settle(stream_tasks, drain_deadline, cancel=True)
+            elif spawn_joined:
+                joined = True  # Failed acquisition owns no child process or streams.
+            if joined and waiter_joined:
+                shutil.rmtree(workdir)
+            else:
+                raise lifecycle.OwnershipUnsettled(
+                    f"sandbox process or readers unresolved; private capture retained at {workdir}"
+                )
+        for task in stream_tasks:
+            task.result()
+        result = _parse(
+            stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
+        )
+        if output_limit.is_set():
+            result.broken = "sandbox received stream exceeds 4 MiB limit"
+        return result
+
+    async def run_reference(self, source: str, calls: list[dict]) -> BatchResult:
         """Trusted source (a spec's reference) with the longer CPU budget."""
-        return self.run(source, calls, cpu_seconds=REFERENCE_CPU_SECONDS)
-
-
-def _as_text(raw) -> str:
-    if raw is None:
-        return ""
-    if isinstance(raw, bytes):
-        return raw.decode("utf-8", "replace")
-    return str(raw)
+        return await self.run(source, calls, cpu_seconds=REFERENCE_CPU_SECONDS)
 
 
 def _parse(stdout: str, stderr: str) -> BatchResult:
@@ -159,12 +273,13 @@ def _parse(stdout: str, stderr: str) -> BatchResult:
         if not isinstance(call_id, int):
             continue
         if record.get("ok"):
-            batch.results[call_id] = CallResult(ok=True,
-                                                value=record.get("value"))
+            batch.results[call_id] = CallResult(ok=True, value=record.get("value"))
         else:
             batch.results[call_id] = CallResult(
-                ok=False, kind=str(record.get("kind") or "error"),
-                text=_clip(record.get("text") or ""))
+                ok=False,
+                kind=str(record.get("kind") or "error"),
+                text=_clip(record.get("text") or ""),
+            )
     return batch
 
 

@@ -15,99 +15,111 @@ from cogame_cogolf.values import BadValue, canon, equal, fingerprint
 SB = Sandbox(call_cpu_seconds=1.0, batch_seconds=8.0)
 
 
-def one(source: str, args=(1,)):
-    batch = SB.run(source, [{"id": 0, "args": list(args)}])
+async def one(source: str, args=(1,)):
+    batch = await SB.run(source, [{"id": 0, "args": list(args)}])
     return batch, batch.get(0)
 
 
-def test_a_plain_implementation_runs():
-    batch, result = one("def solve(x):\n    return x * 2\n", (21,))
+async def test_a_plain_implementation_runs():
+    batch, result = await one("def solve(x):\n    return x * 2\n", (21,))
     assert batch.broken is None
     assert result.ok and result.value == 42
 
 
-def test_an_infinite_loop_is_killed_at_the_cpu_budget():
-    batch, result = one("def solve(x):\n    while True:\n        pass\n")
+async def test_an_infinite_loop_is_killed_at_the_cpu_budget():
+    _batch, result = await one("def solve(x):\n    while True:\n        pass\n")
     assert not result.ok and result.kind == "timeout"
     assert describe(result) == "timed out"
 
 
-def test_results_before_a_batch_kill_are_kept_and_missing_ids_time_out():
+async def test_results_before_a_batch_kill_are_kept_and_missing_ids_time_out():
     """A batch that runs out of wall clock still yields every NDJSON line it
     flushed; the ids that never arrived are recorded as timeouts."""
     sandbox = Sandbox(call_cpu_seconds=5.0, batch_seconds=2.0)
-    source = ("def solve(x):\n"
-              "    if x == 1:\n"
-              "        while True:\n"
-              "            pass\n"
-              "    return x\n")
-    batch = sandbox.run(source, [{"id": 0, "args": [0]},
-                                 {"id": 1, "args": [1]},
-                                 {"id": 2, "args": [2]}])
+    source = (
+        "def solve(x):\n"
+        "    if x == 1:\n"
+        "        while True:\n"
+        "            pass\n"
+        "    return x\n"
+    )
+    batch = await sandbox.run(
+        source, [{"id": 0, "args": [0]}, {"id": 1, "args": [1]}, {"id": 2, "args": [2]}]
+    )
     assert batch.get(0).ok and batch.get(0).value == 0
     assert not batch.get(2).ok and batch.get(2).kind == "timeout"
 
 
-@pytest.mark.parametrize("source,needle", [
-    ("def solve(x):\n    import socket\n    return 1\n", "socket"),
-    ("def solve(x):\n    import subprocess\n    return 1\n", "subprocess"),
-    ("def solve(x):\n    import ctypes\n    return 1\n", "ctypes"),
-    ("def solve(x):\n    import multiprocessing\n    return 1\n", "multiprocessing"),
-])
-def test_blocked_imports_are_denied(source, needle):
-    _batch, result = one(source)
+@pytest.mark.parametrize(
+    "source,needle",
+    [
+        ("def solve(x):\n    import socket\n    return 1\n", "socket"),
+        ("def solve(x):\n    import subprocess\n    return 1\n", "subprocess"),
+        ("def solve(x):\n    import ctypes\n    return 1\n", "ctypes"),
+        (
+            "def solve(x):\n    import multiprocessing\n    return 1\n",
+            "multiprocessing",
+        ),
+    ],
+)
+async def test_blocked_imports_are_denied(source, needle):
+    _batch, result = await one(source)
     assert not result.ok and result.kind == "error"
     assert needle in result.text
 
 
-def test_a_file_write_fails():
-    _batch, result = one(
-        "def solve(x):\n    open('/tmp/cogolf-should-not-exist','w')\n    return 1\n")
+async def test_a_file_write_fails():
+    _batch, result = await one(
+        "def solve(x):\n    open('/tmp/cogolf-should-not-exist','w')\n    return 1\n"
+    )
     assert not result.ok and result.kind == "error"
 
 
-def test_a_giant_allocation_raises_instead_of_killing_the_container():
-    _batch, result = one("def solve(x):\n    return bytearray(1024*1024*1024)\n")
+async def test_a_giant_allocation_raises_instead_of_killing_the_container():
+    _batch, result = await one("def solve(x):\n    return bytearray(1024*1024*1024)\n")
     assert not result.ok
     assert result.kind in ("error", "timeout")
     assert "MemoryError" in result.text or result.kind == "timeout"
 
 
-def test_a_syntax_error_is_broken_with_a_reason():
-    batch, result = one("def solve(x)\n  return 1\n")
+async def test_a_syntax_error_is_broken_with_a_reason():
+    batch, result = await one("def solve(x)\n  return 1\n")
     assert batch.broken and "SyntaxError" in batch.broken
     assert not result.ok and result.kind == "broken"
 
 
-def test_no_callable_solve_is_broken():
-    batch, _ = one("solve = 3\n")
+async def test_no_callable_solve_is_broken():
+    batch, _ = await one("solve = 3\n")
     assert batch.broken and "solve" in batch.broken
 
 
-def test_a_non_json_return_is_a_bad_value():
-    _batch, result = one("def solve(x):\n    return {1: 2}\n")
+async def test_a_non_json_return_is_a_bad_value():
+    _batch, result = await one("def solve(x):\n    return {1: 2}\n")
     assert not result.ok and result.kind == "bad_value"
-    _batch, result = one("def solve(x):\n    return float('nan')\n")
+    _batch, result = await one("def solve(x):\n    return float('nan')\n")
     assert not result.ok and result.kind == "bad_value"
 
 
-def test_the_reference_runs_through_the_same_runner():
-    batch = SB.run_reference("def solve(xs):\n    return sorted(xs)\n",
-                             [{"id": 0, "args": [[3, 1, 2]]}])
+async def test_the_reference_runs_through_the_same_runner():
+    batch = await SB.run_reference(
+        "def solve(xs):\n    return sorted(xs)\n", [{"id": 0, "args": [[3, 1, 2]]}]
+    )
     assert batch.get(0).value == [1, 2, 3]
 
 
-def test_a_missing_interpreter_is_a_harness_fault():
+async def test_a_missing_interpreter_is_a_harness_fault():
     with pytest.raises(SandboxError):
-        Sandbox(python="/nonexistent/python").run("def solve():\n    return 1\n",
-                                                  [{"id": 0, "args": []}])
+        await Sandbox(python="/nonexistent/python").run(
+            "def solve():\n    return 1\n", [{"id": 0, "args": []}]
+        )
 
 
 # -- canon / equality (one rule, used everywhere) ----------------------------
 
-def test_canon_and_equality():
-    assert equal(canon(1), canon(1.0))          # numbers compare by value
-    assert not equal(canon(True), canon(1))     # bools are type-tagged
+
+async def test_canon_and_equality():
+    assert equal(canon(1), canon(1.0))  # numbers compare by value
+    assert not equal(canon(True), canon(1))  # bools are type-tagged
     assert not equal(canon(1), canon(True))
     assert equal(canon(True), canon(True))
     assert equal(canon((1, 2)), canon([1, 2]))  # tuples canonicalise to lists
@@ -120,16 +132,77 @@ def test_canon_and_equality():
             canon(bad)
 
 
-def test_fingerprint_distinguishes_types_and_ignores_key_order():
+async def test_fingerprint_distinguishes_types_and_ignores_key_order():
     assert fingerprint([1]) != fingerprint([True])
     assert fingerprint({"a": 1, "b": 2}) == fingerprint({"b": 2, "a": 1})
     assert fingerprint(1) == fingerprint(1.0)
     assert fingerprint([1, 2]) != fingerprint([2, 1])
 
 
-def test_describe_is_bounded():
+async def test_describe_is_bounded():
     from cogame_cogolf.sandbox import CallResult
+
     long_text = "x" * 5000
     assert len(describe(CallResult(ok=False, kind="error", text=long_text))) <= 300
     assert len(describe(CallResult(ok=True, value=[long_text]))) <= 300
     assert not math.isnan(0.0)  # sanity: the module imported cleanly
+
+
+async def test_kernel_denies_game_and_private_file_reads_but_keeps_stdlib(tmp_path):
+    from cogame_cogolf import sandbox
+
+    canary = tmp_path / "private-canary"
+    canary.write_text("COGOLF_PRIVATE_FILE_SENTINEL")
+    for path in (canary, sandbox.RUNNER, tmp_path):
+        _batch, result = await one(
+            f"def solve(x):\n    return open({str(path)!r}).read()\n"
+        )
+        assert not result.ok and result.kind == "error"
+        assert "PermissionError" in result.text
+        assert "COGOLF_PRIVATE_FILE_SENTINEL" not in result.text
+    _batch, result = await one(
+        "def solve(x):\n    import math, re, collections\n"
+        "    return [math.isqrt(x), re.findall(r'\\d+', 'a12b'), "
+        "dict(collections.Counter('aba'))]\n",
+        (49,),
+    )
+    assert result.ok and result.value == [7, ["12"], {"a": 2, "b": 1}]
+
+
+async def test_filesystem_denial_survives_mutated_python_audit_globals(tmp_path):
+    canary = tmp_path / "owned-canary"
+    canary.write_text("PRIVATE_READ_CANARY")
+    writable = tmp_path / "forbidden-write"
+    for expression in (
+        f"open({str(canary)!r}).read()",
+        f"open({str(writable)!r}, 'w').write('changed')",
+    ):
+        source = (
+            "def solve(x):\n    import sys\n"
+            "    runner = sys.modules['__main__']\n"
+            "    runner.DENIED_PREFIXES = ()\n"
+            "    runner.DENIED_EVENTS = frozenset()\n"
+            "    runner.WRITE_MODES = frozenset()\n"
+            f"    return {expression}\n"
+        )
+        _batch, result = await one(source)
+        assert not result.ok and result.kind == "error"
+        assert "PermissionError" in result.text
+    assert canary.read_text() == "PRIVATE_READ_CANARY"
+    assert not writable.exists()
+
+
+async def test_private_parent_descriptor_is_not_inherited(tmp_path):
+    import os
+
+    canary = tmp_path / "parent-private"
+    canary.write_text("PRIVATE_DESCRIPTOR_CANARY")
+    with canary.open("rb") as private:
+        os.set_inheritable(private.fileno(), True)
+        _batch, result = await one(
+            "def solve(x):\n    import os\n"
+            f"    return os.read({private.fileno()}, 100).decode()\n"
+        )
+    assert not result.ok and result.kind == "error"
+    assert "Bad file descriptor" in result.text
+    assert "PRIVATE_DESCRIPTOR_CANARY" not in result.text

@@ -11,6 +11,7 @@ import pytest
 from cogame_cogolf import contract
 from cogame_cogolf.config import KNOWN_KEYS
 from cogame_cogolf.results import REASONS, RESULT_KEYS
+from coworld.types import CoworldManifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((REPO_ROOT / "coworld_manifest_template.json").read_text())
@@ -70,7 +71,7 @@ def test_every_declared_player_can_be_seated_in_certification():
     assert declared == seated == {"literalist", "pedant"}
 
 
-def test_the_upload_contract_of_coworld_0_1_42():
+def test_the_upload_contract():
     assert MANIFEST["$schema"].startswith("https://")
     assert len(MANIFEST["tags"]) >= 3
     assert MANIFEST["episode_timeout_minutes"] == 20
@@ -87,8 +88,9 @@ def test_the_upload_contract_of_coworld_0_1_42():
     for page in docs["pages"]:
         assert page["title"] and page["content"]["type"] == "uri"
     for player in MANIFEST["player"]:
-        assert {"id", "type", "name", "description", "image", "run", "env"} \
-            <= set(player)
+        assert {"id", "type", "name", "description", "image", "run", "env"} <= set(
+            player
+        )
         assert player["run"] == ["/bin/cogolf-player"]
         assert player["env"]["PLAYER_SCRIPTED"] == player["id"]
 
@@ -100,9 +102,11 @@ def test_the_timing_arithmetic_fits_inside_the_play_budget():
     6 s = 73 s; 9 x 73 + startup + artifacts = 680 s < 720 s."""
     schema = MANIFEST["game"]["config_schema"]["properties"]
     budget = MANIFEST["episode_timeout_minutes"] * 60 * 0.6
-    hole = (schema["hole_deadline_seconds"]["default"]
-            + schema["retry_deadline_seconds"]["default"]
-            + 3 * schema["sandbox_batch_seconds"]["default"])
+    hole = (
+        schema["hole_deadline_seconds"]["default"]
+        + schema["retry_deadline_seconds"]["default"]
+        + 3 * schema["sandbox_batch_seconds"]["default"]
+    )
     holes = schema["holes"]["default"]
     assert hole * holes + 23 <= budget
     assert schema["wall_clock_budget_seconds"]["default"] <= budget
@@ -112,8 +116,12 @@ def test_the_timing_arithmetic_fits_inside_the_play_budget():
 
 def test_the_policy_set_has_prompt_and_scripted_players():
     names = [p["name"] for p in POLICIES]
-    assert names == ["cogolf-architect", "cogolf-sniper", "cogolf-literalist",
-                     "cogolf-pedant"]
+    assert names == [
+        "cogolf-architect",
+        "cogolf-sniper",
+        "cogolf-literalist",
+        "cogolf-pedant",
+    ]
     prompts = [p for p in POLICIES if "PLAYER_PROMPT" in p["env"]]
     scripted = [p for p in POLICIES if "PLAYER_SCRIPTED" in p["env"]]
     assert len(prompts) == 2 and len(scripted) == 2
@@ -125,8 +133,7 @@ def test_the_policy_set_has_prompt_and_scripted_players():
         assert policy["run"] == "/bin/cogolf-player"
         # one image, one entrypoint, env-switched
         assert policy["image"] == "cogame-cogolf-player:latest"
-    assert {p["env"]["PLAYER_SCRIPTED"] for p in scripted} == {"literalist",
-                                                               "pedant"}
+    assert {p["env"]["PLAYER_SCRIPTED"] for p in scripted} == {"literalist", "pedant"}
 
 
 def test_the_compose_services_back_the_manifest_placeholders():
@@ -141,22 +148,33 @@ def test_the_compose_services_back_the_manifest_placeholders():
 
 
 def test_no_unsubstituted_scaffold_placeholders_survive():
-    files = [".github/workflows/ci.yml", ".github/workflows/coworld-release.yml",
-             ".github/workflows/coworld-submit.yml", "tools/ci/docker_smoke.sh",
-             "tools/ci/policies.json"]
+    files = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/coworld-release.yml",
+        ".github/workflows/coworld-submit.yml",
+        "tools/ci/docker_smoke.sh",
+        "tools/ci/policies.json",
+    ]
     for name in files:
         text = (REPO_ROOT / name).read_text()
         for placeholder in ("<slug>", "<IMAGE>", "<SEATS>"):
             assert placeholder not in text, f"{name} still has {placeholder}"
 
 
-@pytest.mark.parametrize("name", ["tools/build_replay_viewer.sh",
-                                  "tools/ci/docker_smoke.sh",
-                                  "viewer/build_viewer.sh"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tools/build_replay_viewer.sh",
+        "tools/ci/docker_smoke.sh",
+        "viewer/build_viewer.sh",
+    ],
+)
 def test_the_hooks_are_committed_executable(name):
     import os
-    assert os.access(REPO_ROOT / name, os.X_OK), \
+
+    assert os.access(REPO_ROOT / name, os.X_OK), (
         f"{name} must be mode 100755 (git update-index --chmod=+x)"
+    )
 
 
 def test_the_manifest_passes_the_cli_upload_validator():
@@ -164,7 +182,8 @@ def test_the_manifest_passes_the_cli_upload_validator():
     built = json.loads(
         json.dumps(MANIFEST)
         .replace("{{GAME_IMAGE}}", "cogame-cogolf-game:latest")
-        .replace("{{PLAYER_IMAGE}}", "cogame-cogolf-player:latest"))
+        .replace("{{PLAYER_IMAGE}}", "cogame-cogolf-player:latest")
+    )
     built["game"]["version"] = "0.1.0"
     coworld_manifest.validate_upload_manifest(built)
 
@@ -176,7 +195,7 @@ def test_the_variants_and_the_fixture_validate_against_the_config_schema():
     fixtures.append(MANIFEST["certification"]["game_config"])
     for fixture in fixtures:
         config = dict(fixture)
-        config["tokens"] = ["t0", "t1"]      # the runner injects these
+        config["tokens"] = ["t0", "t1"]  # the runner injects these
         jsonschema.validate(config, schema)
 
 
@@ -189,3 +208,11 @@ def test_the_certification_fixture_outlasts_the_viewer_soak():
     soak = re.search(r"--soak (\d+)", ci)
     assert soak, "the wasm-viewer job must soak the playback"
     assert cert["holes"] * 16 * 0.7 > int(soak.group(1))
+
+
+def test_native_cli_template_has_no_version_and_hydrated_runtime_validates():
+    assert "version" not in MANIFEST["game"]
+    hydrated = MANIFEST | {"game": MANIFEST["game"] | {"version": "0.2.0"}}
+    manifest = CoworldManifest.model_validate(hydrated)
+    assert manifest.game.version == "0.2.0"
+    assert len(manifest.player) == SEATS

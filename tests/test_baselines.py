@@ -11,20 +11,32 @@ construction — and no baseline ever fires the same arguments twice in a hole.
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 import pytest
 from cogame_cogolf import contract
-from cogame_cogolf.baseline import (BASELINE_NAMES, UnknownBaseline, baseline,
-                                    literalist, pedant)
-from cogame_cogolf.engine import (compact, sanitize_submission,
-                                  validate_submission_message)
+from cogame_cogolf.baseline import (
+    BASELINE_NAMES,
+    UnknownBaseline,
+    baseline,
+    literalist,
+    pedant,
+)
 from cogame_cogolf.sandbox import Sandbox
 from cogame_cogolf.specs import load_deck
+from cogame_cogolf.submission import (
+    compact,
+    sanitize_submission,
+    validate_submission_message,
+)
 from cogame_cogolf.values import BadValue, canon, equal, fingerprint
 
 DECK = load_deck("core")
-CASES = [pytest.param(key, name, id=f"{key}-{name}")
-         for key in sorted(DECK) for name in BASELINE_NAMES]
+CASES = [
+    pytest.param(key, name, id=f"{key}-{name}")
+    for key in sorted(DECK)
+    for name in BASELINE_NAMES
+]
 SANDBOX = Sandbox(call_cpu_seconds=1.0, batch_seconds=8.0)
 
 
@@ -33,7 +45,7 @@ def test_the_submission_validates_against_the_wire_schema(key, name):
     spec = DECK[key]
     message = baseline(name, spec, 3)
     assert message["type"] == contract.MSG_SUBMISSION and message["hole"] == 3
-    payload, cause = validate_submission_message(message, 3)
+    _payload, cause = validate_submission_message(message, 3)
     assert cause is None, cause
     assert len(json.dumps(message).encode("utf-8")) <= contract.MAX_MESSAGE_BYTES
 
@@ -73,7 +85,7 @@ def test_every_literalist_shot_passes_the_reference_legality_gate(key):
     arity = len(spec.SIGNATURE["params"])
     for test in message["tests"]:
         assert len(test["args"]) == arity
-        answer = spec.reference(*test["args"])          # must not raise
+        answer = spec.reference(*test["args"])  # must not raise
         assert equal(canon(answer), canon(test["expect"])), test
 
 
@@ -97,18 +109,17 @@ def test_the_pedant_fires_shots_the_reference_rejects(key):
 
 
 @pytest.mark.parametrize("key,name", CASES)
-def test_no_baseline_submission_ever_hits_the_sandbox_timeout(key, name):
+async def test_no_baseline_submission_ever_hits_the_sandbox_timeout(key, name):
     """Every call a baseline can provoke — its own tests, the other
     baseline's tests and the par suite — resolves well inside the budget."""
     spec = DECK[key]
     source = baseline(name, spec, 1)["impl"]
     calls = []
-    for i, test in enumerate(literalist(spec, 1)["tests"]
-                             + pedant(spec, 1)["tests"]):
+    for i, test in enumerate(literalist(spec, 1)["tests"] + pedant(spec, 1)["tests"]):
         calls.append({"id": i, "args": test["args"]})
     for j, par in enumerate(spec.PAR_TESTS):
         calls.append({"id": 900 + j, "args": par["args"]})
-    batch = SANDBOX.run(source, calls)
+    batch = await SANDBOX.run(source, calls)
     assert batch.broken is None, batch.broken
     for call in calls:
         result = batch.get(call["id"])
@@ -116,14 +127,16 @@ def test_no_baseline_submission_ever_hits_the_sandbox_timeout(key, name):
 
 
 @pytest.mark.parametrize("name", BASELINE_NAMES)
-def test_the_unknown_spec_path_still_plays_a_bounded_legal_move(name):
+async def test_the_unknown_spec_path_still_plays_a_bounded_legal_move(name):
     """A deck extended without updating a baseline still submits: a stub
     that echoes the worked example, and the spec's own examples as tests."""
 
     class Unknown:
         KEY = "mystery"
-        EXAMPLES = [{"args": [[1, 2]], "expect": 3},
-                    {"args": [[]], "expect": 0}]
+        EXAMPLES: ClassVar[list[dict]] = [
+            {"args": [[1, 2]], "expect": 3},
+            {"args": [[]], "expect": 0},
+        ]
 
     message = baseline(name, Unknown(), 2)
     payload, cause = validate_submission_message(message, 2)
@@ -131,8 +144,9 @@ def test_the_unknown_spec_path_still_plays_a_bounded_legal_move(name):
     clean = sanitize_submission(payload, 2, 5)
     assert len(clean["tests"]) == 2
     assert len(clean["impl"]) <= contract.MAX_IMPL_CHARS
-    batch = SANDBOX.run(message["impl"], [{"id": 0, "args": [[1, 2]]},
-                                          {"id": 1, "args": [["x"]]}])
+    batch = await SANDBOX.run(
+        message["impl"], [{"id": 0, "args": [[1, 2]]}, {"id": 1, "args": [["x"]]}]
+    )
     assert batch.broken is None
     assert batch.get(0).ok and batch.get(0).value == 3
     assert batch.get(1).ok and batch.get(1).value is None

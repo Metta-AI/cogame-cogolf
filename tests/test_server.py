@@ -7,12 +7,14 @@ import asyncio
 import json
 
 import pytest
-from aiohttp import web
+from aiohttp import WSServerHandshakeError, web
 from aiohttp.test_utils import TestClient, TestServer
-from cogame_cogolf import contract, server as server_module
+from cogame_cogolf import contract
+from cogame_cogolf import server as server_module
 from cogame_cogolf.replay import ReplayWriter
 from cogame_cogolf.results import EpisodeResult, SeatOutcome, results_doc
 from cogame_cogolf.server import GameServer, make_replay_app
+
 from tests.conftest import make_config
 
 
@@ -46,10 +48,9 @@ async def test_client_pages_serve_without_opening_a_player_socket(game):
 
 async def test_a_bad_token_or_slot_is_403(game):
     _g, client = game
-    for query in ("slot=0&token=nope", "slot=9&token=token-0", "slot=x",
-                  "slot=0"):
+    for query in ("slot=0&token=nope", "slot=9&token=token-0", "slot=x", "slot=0"):
         assert (await client.get(f"/client/player?{query}")).status == 403
-    with pytest.raises(Exception):
+    with pytest.raises(WSServerHandshakeError):
         await client.ws_connect("/player?slot=0&token=wrong")
 
 
@@ -58,7 +59,7 @@ async def test_a_duplicate_live_socket_is_409(game):
     ws = await client.ws_connect("/player?slot=0&token=token-0")
     welcome = json.loads(await ws.receive_str())
     assert welcome["type"] == contract.MSG_WELCOME
-    with pytest.raises(Exception):
+    with pytest.raises(WSServerHandshakeError):
         await client.ws_connect("/player?slot=0&token=token-0")
     await ws.close()
 
@@ -96,49 +97,88 @@ async def test_global_is_broadcast_only_and_opens_with_a_status_snapshot(game):
     await ws.close()
 
 
-async def test_an_oversize_or_malformed_frame_is_a_cause_not_a_crash(game):
+async def test_an_oversize_or_malformed_control_is_a_cause_not_a_crash(game):
+    import time
+
+    from cogame_cogolf.engine import Engine
+    from cogame_cogolf.private_window import Action, Ready
+
+    from tests.fakes import FakeSandbox, ScriptedSource
+
     g, client = game
     seat = g.seats[0]
     ws = await client.ws_connect("/player?slot=0&token=token-0")
-    await ws.receive_str()   # welcome
+    welcome = json.loads(await ws.receive_str())
+    await ws.send_str(
+        Ready(slot=0, profile=welcome["native_profile"]).model_dump_json()
+    )
+    assert await seat.wait_connected(1)
+    engine = Engine(g.config, [ScriptedSource(), ScriptedSource()], FakeSandbox())
+    spec = engine.deck["median"]
 
-    async def send_and_collect(raw: str):
-        task = asyncio.create_task(seat.get_submission(
-            1, {"type": contract.MSG_OBSERVATION, "hole": 1, "observation": {}},
-            __import__("time").monotonic() + 2.0))
-        await asyncio.sleep(0.05)
-        await ws.send_str(raw)
+    async def send_and_collect(control):
+        payload = engine._observation_message(1, spec, 0, retry=False)
+        task = asyncio.create_task(
+            seat.get_submission(1, payload, time.monotonic() + 2)
+        )
+        issued = json.loads(await ws.receive_str())
+        if isinstance(control, str):
+            await ws.send_str(control)
+        else:
+            await ws.send_str(
+                Action(
+                    request_id=issued["request_id"], action=control
+                ).model_dump_json()
+            )
         return await task
 
     message, cause = await send_and_collect("not json at all")
     assert message is None and cause == "malformed"
-    big = json.dumps({"type": "submission", "hole": 1,
-                      "impl": "x" * (contract.MAX_MESSAGE_BYTES + 10)})
-    message, cause = await send_and_collect(big)
+    message, cause = await send_and_collect(
+        {"type": "submission", "hole": 1, "impl": "x" * (contract.MAX_IMPL_CHARS + 1)}
+    )
     assert message is None and cause == "oversize"
-    message, cause = await send_and_collect(json.dumps(
-        {"type": "submission", "hole": 1, "impl": "def solve(x):\n    return x\n",
-         "tests": [], "note": ""}))
+    message, cause = await send_and_collect(
+        {
+            "type": "submission",
+            "hole": 1,
+            "impl": "def solve(x):\n    return x\n",
+            "tests": [],
+            "note": "",
+        }
+    )
     assert cause is None and message["impl"].startswith("def solve")
     await ws.close()
 
 
-async def test_a_wrong_hole_reply_is_counted_and_the_hole_keeps_waiting(game):
-    import time as _time
-    g, client = game
+async def test_stale_window_action_is_rejected_before_pending_control(game):
+    import time
+    from uuid import uuid4
+
+    from cogame_cogolf.engine import Engine
+    from cogame_cogolf.private_window import Action
+
+    from tests.fakes import FakeSandbox, ScriptedSource
+
+    g, _client = game
     seat = g.seats[0]
-    ws = await client.ws_connect("/player?slot=0&token=token-0")
-    await ws.receive_str()
-    task = asyncio.create_task(seat.get_submission(
-        2, {"type": contract.MSG_OBSERVATION, "hole": 2, "observation": {}},
-        _time.monotonic() + 1.0))
-    await asyncio.sleep(0.05)
-    await ws.send_str(json.dumps({"type": "submission", "hole": 7,
-                                  "impl": "def solve(x):\n    return x\n"}))
-    message, cause = await task
-    assert message is None and cause == "timeout"
-    assert seat.wrong_hole_count == 1
-    await ws.close()
+    engine = Engine(g.config, [ScriptedSource(), ScriptedSource()], FakeSandbox())
+    payload = engine._observation_message(1, engine.deck["median"], 0, False)
+    task = asyncio.create_task(seat.get_submission(1, payload, time.monotonic() + 0.01))
+    await asyncio.sleep(0)
+    with pytest.raises(ValueError, match="outside its issued window"):
+        seat.deliver(
+            Action(
+                request_id=uuid4(),
+                action={
+                    "type": "submission",
+                    "hole": 1,
+                    "impl": "def solve(x): return x",
+                },
+            ).model_dump(mode="json")
+        )
+    assert await task == (None, "disconnected")
+    assert not seat.admission.accepted
 
 
 async def test_healthz_and_global_answer_during_the_shutdown_grace(game):
@@ -147,9 +187,17 @@ async def test_healthz_and_global_answer_during_the_shutdown_grace(game):
     g, client = game
     assert server_module.SHUTDOWN_GRACE_SECONDS >= 20.0
     seats = (SeatOutcome(hole_scores=[1]), SeatOutcome(hole_scores=[-1]))
-    doc = results_doc(g.config, EpisodeResult(
-        seats=seats, reason="complete", wall_clock_seconds=1.0,
-        holes_played=1, seed=g.seed, deck_version="core-1"))
+    doc = results_doc(
+        g.config,
+        EpisodeResult(
+            seats=seats,
+            reason="complete",
+            wall_clock_seconds=1.0,
+            holes_played=1,
+            seed=g.seed,
+            deck_version="core-1",
+        ),
+    )
     g.results_doc = doc
     await g._broadcast_done(doc)
     assert (await client.get("/healthz")).status == 200
@@ -162,12 +210,27 @@ async def test_healthz_and_global_answer_during_the_shutdown_grace(game):
 async def test_replay_mode_serves_the_document_and_a_page():
     config = make_config()
     writer = ReplayWriter(config, 7)
-    writer.append_event({"kind": "hole_start", "hole": 1, "spec_key": "median",
-                         "title": "Median", "prompt_head": "…"})
+    writer.append_event(
+        {
+            "kind": "hole_start",
+            "hole": 1,
+            "spec_key": "median",
+            "title": "Median",
+            "prompt_head": "…",
+        }
+    )
     seats = (SeatOutcome(hole_scores=[0]), SeatOutcome(hole_scores=[0]))
-    doc = results_doc(config, EpisodeResult(
-        seats=seats, reason="complete", wall_clock_seconds=1.0, holes_played=1,
-        seed=7, deck_version="core-1"))
+    doc = results_doc(
+        config,
+        EpisodeResult(
+            seats=seats,
+            reason="complete",
+            wall_clock_seconds=1.0,
+            holes_played=1,
+            seed=7,
+            deck_version="core-1",
+        ),
+    )
     blob = writer.finalize(doc)
     app = make_replay_app(blob, viewer_dist=None)
     async with TestClient(TestServer(app)) as client:

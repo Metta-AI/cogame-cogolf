@@ -10,10 +10,6 @@ attributes ``tests/test_specs.py`` asserts:
     EXAMPLES     2 x {"args": [...], "expect": ...} (reference-consistent)
     reference    the hidden oracle; the only authority on the ambiguous clause
     PAR_TESTS    4 x {"name", "args", "expect"} hidden audit cases
-    SAFE_TESTS   5 reference-consistent shots (the `literalist` baseline)
-    EDGE_TESTS   5 aggressive shots (the `pedant` baseline; some illegal)
-    LITERAL_IMPL str, the source `literalist` submits
-    NAIVE_IMPL   str, the source `pedant` submits
     AMBIGUITY    str, <= 140 chars, spectator note — REPLAY ONLY, never sent
                  to a seat
 
@@ -25,13 +21,37 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from . import (chunk, dedupe, longest_run, median, path_norm, range_merge,
-               roman, round_to, score_grade, title_case, top_k, word_count)
+from . import (
+    chunk,
+    dedupe,
+    longest_run,
+    median,
+    path_norm,
+    range_merge,
+    roman,
+    round_to,
+    score_grade,
+    title_case,
+    top_k,
+    word_count,
+)
 
 DECK_VERSION = "core-1"
 
-_CORE = (longest_run, median, title_case, roman, chunk, dedupe, word_count,
-         round_to, range_merge, top_k, path_norm, score_grade)
+_CORE = (
+    longest_run,
+    median,
+    title_case,
+    roman,
+    chunk,
+    dedupe,
+    word_count,
+    round_to,
+    range_merge,
+    top_k,
+    path_norm,
+    score_grade,
+)
 
 DECKS: dict[str, dict[str, ModuleType]] = {
     "core": {module.KEY: module for module in _CORE},
@@ -48,7 +68,8 @@ def load_deck(name: str) -> dict[str, ModuleType]:
         return DECKS[name]
     except KeyError:
         raise DeckError(
-            f"unknown deck {name!r}; known decks: {sorted(DECKS)}") from None
+            f"unknown deck {name!r}; known decks: {sorted(DECKS)}"
+        ) from None
 
 
 def deck_keys(name: str) -> list[str]:

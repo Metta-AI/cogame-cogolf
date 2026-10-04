@@ -26,20 +26,25 @@ has a move that keeps play going.
 from __future__ import annotations
 
 import asyncio
-import json
 import random
 import sys
 import time
-import unicodedata
-from typing import Awaitable, Callable, Protocol, Sequence
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Protocol
 
-from . import contract, scoring
+from . import contract, lifecycle, scoring
 from .baseline import literalist
 from .config import GameConfig
-from .results import (REASON_COMPLETE, REASON_DEADLINE, EpisodeResult,
-                      SeatOutcome)
-from .sandbox import Sandbox, SandboxError, describe
+from .native_profile import NativeProfile
+from .private_window import ObservationPacket
+from .results import REASON_COMPLETE, REASON_DEADLINE, EpisodeResult, SeatOutcome
+from .sandbox import BatchResult, Sandbox, SandboxError, describe
 from .specs import DECK_VERSION, load_deck
+from .submission import (
+    clean_text,
+    compact,
+    sanitize_submission,
+)
 from .values import BadValue, canon, equal, fingerprint
 
 HISTORY_HOLES = 4
@@ -54,83 +59,12 @@ PAR_ID_BASE = 10_000
 # boundaries — never bytes. Python `str` slicing is code-point based, so the
 # rule is: decode at the websocket edge, cap the `str`, re-encode last.
 
-def clean_text(value, limit: int | None = None) -> str:
-    """Sanitise ``value`` for the wire and the replay."""
-    if not isinstance(value, str):
-        value = "" if value is None else str(value)
-    value = value.encode("utf-8", "surrogatepass").decode("utf-8", "replace")
-    value = "".join(
-        ch for ch in value
-        if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
-    if limit is not None and len(value) > limit:
-        value = value[:limit - 1] + "\u2026"
-    return value
-
-
-def compact(value) -> str:
-    """Compact JSON for a value, for the cap checks and the replay."""
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"),
-                      default=str)
-
 
 # -- submission validation ----------------------------------------------------
 
-def validate_submission_message(data, hole: int) -> tuple[dict | None,
-                                                          str | None]:
-    """Classify a decoded client message for the pending ``hole``.
-
-    ``(payload, None)`` when valid, ``(None, "wrong_hole")`` when it
-    addresses another hole (dropped; the hole keeps waiting), else
-    ``(None, "malformed" | "oversize")``.
-    """
-    if not isinstance(data, dict) or data.get("type") != contract.MSG_SUBMISSION:
-        return None, "malformed"
-    got = data.get("hole")
-    if isinstance(got, bool) or not isinstance(got, int):
-        return None, "malformed"
-    if got != hole:
-        return None, "wrong_hole"
-    impl = data.get("impl")
-    if not isinstance(impl, str) or not impl.strip():
-        return None, "malformed"
-    if len(impl) > contract.MAX_IMPL_CHARS:
-        return None, "oversize"
-    tests = data.get("tests", [])
-    if tests is None:
-        tests = []
-    if not isinstance(tests, list):
-        return None, "malformed"
-    note = data.get("note", "")
-    if note is not None and not isinstance(note, str):
-        return None, "malformed"
-    return data, None
-
-
-def sanitize_submission(data: dict, hole: int, max_tests: int) -> dict:
-    """Normalise a validated submission: caps, truncation, drops."""
-    raw_tests = [t for t in (data.get("tests") or []) if isinstance(t, dict)]
-    dropped = max(0, len(raw_tests) - max_tests)
-    tests = []
-    for idx, entry in enumerate(raw_tests[:max_tests]):
-        tests.append({
-            "idx": idx,
-            "name": clean_text(entry.get("name") or f"test {idx + 1}",
-                               contract.MAX_TEST_NAME_CHARS),
-            "args": entry.get("args"),
-            "expect": entry.get("expect"),
-            "why": clean_text(entry.get("why") or "",
-                              contract.MAX_WHY_CHARS),
-        })
-    return {
-        "hole": hole,
-        "impl": clean_text(data.get("impl") or ""),
-        "tests": tests,
-        "note": clean_text(data.get("note") or "", contract.MAX_NOTE_CHARS),
-        "dropped_tests": dropped,
-    }
-
 
 # -- transport-free seat source ----------------------------------------------
+
 
 class SubmissionSource(Protocol):
     """Per-seat submission provider (websocket seat, scripted fake, ...)."""
@@ -141,9 +75,9 @@ class SubmissionSource(Protocol):
         """Block until the seat has connected (True) or timeout (False)."""
         ...
 
-    async def get_submission(self, hole: int, payload: dict,
-                             deadline_at: float) -> tuple[dict | None,
-                                                          str | None]:
+    async def get_submission(
+        self, hole: int, payload: dict, deadline_at: float
+    ) -> tuple[dict | None, str | None]:
         """Send ``payload`` and wait for this hole's submission.
 
         Returns ``(message, None)`` for a valid reply, else
@@ -154,21 +88,34 @@ class SubmissionSource(Protocol):
 
 
 class Engine:
-    def __init__(self, config: GameConfig, sources: Sequence[SubmissionSource],
-                 sandbox: Sandbox, *, seed: int | None = None,
-                 on_event: Callable[[dict], None] | None = None,
-                 on_hole: Callable[[dict], None] | None = None,
-                 on_progress: Callable[[int, list, dict | None], None] | None = None,
-                 on_never_connected: Callable[[int], Awaitable[None]] | None = None,
-                 progress_interval_seconds: float = PROGRESS_INTERVAL_SECONDS):
+    def __init__(
+        self,
+        config: GameConfig,
+        sources: Sequence[SubmissionSource],
+        sandbox: Sandbox,
+        *,
+        seed: int | None = None,
+        on_event: Callable[[dict], None] | None = None,
+        on_hole: Callable[[dict], None] | None = None,
+        on_window: Callable[[ObservationPacket], None] | None = None,
+        native_profiles: Sequence[NativeProfile] | None = None,
+        on_applied: Callable[[int, list[dict], dict], None] | None = None,
+        on_progress: Callable[[int, list, dict | None], None] | None = None,
+        on_never_connected: Callable[[int], Awaitable[None]] | None = None,
+        progress_interval_seconds: float = PROGRESS_INTERVAL_SECONDS,
+    ):
         if len(sources) != config.num_seats:
-            raise ValueError(
-                f"need {config.num_seats} sources, got {len(sources)}")
+            raise ValueError(f"need {config.num_seats} sources, got {len(sources)}")
         self._config = config
         self._sources = list(sources)
         self._sandbox = sandbox
         self._on_event = on_event
         self._on_hole = on_hole
+        self.native_profiles = (
+            config.native_profiles if native_profiles is None else native_profiles
+        )
+        self._on_window = on_window
+        self._on_applied = on_applied
         self._on_progress = on_progress
         self._on_never_connected = on_never_connected
         self._progress_interval = progress_interval_seconds
@@ -191,7 +138,8 @@ class Engine:
         if config.holes > len(keys):
             raise ValueError(
                 f"deck {config.deck!r} has {len(keys)} specs, "
-                f"config asks for {config.holes} holes")
+                f"config asks for {config.holes} holes"
+            )
         self.spec_keys = random.Random(self.seed).sample(keys, config.holes)
 
     # -- helpers -------------------------------------------------------------
@@ -228,15 +176,13 @@ class Engine:
                 self._log(
                     f"stopping before hole {hole}: "
                     f"{self._wall_remaining():.0f}s left, reserve is "
-                    f"{cfg.hole_reserve_seconds:.0f}s")
+                    f"{cfg.hole_reserve_seconds:.0f}s"
+                )
                 reason = REASON_DEADLINE
                 break
             await self._space_holes()
             self.current_hole = hole
-            try:
-                await self._play_hole(hole)
-            except SandboxError:
-                raise
+            await self._play_hole(hole)
             self.holes_played = hole
             if self._wall_remaining() <= 0:
                 self._deadline_hit = True
@@ -246,25 +192,32 @@ class Engine:
         wall = time.monotonic() - self._start
         scores = self.scores
         killer = scoring.killer_test(self.shots, self.per_hole, scores)
-        self._emit("episode_end", reason=reason, scores=list(scores),
-                   killer_test=killer)
-        return EpisodeResult(seats=tuple(self.outcomes), reason=reason,
-                             wall_clock_seconds=wall,
-                             holes_played=self.holes_played, seed=self.seed,
-                             deck_version=self.deck_version,
-                             killer_test=killer)
+        self._emit(
+            "episode_end", reason=reason, scores=list(scores), killer_test=killer
+        )
+        return EpisodeResult(
+            seats=tuple(self.outcomes),
+            reason=reason,
+            wall_clock_seconds=wall,
+            holes_played=self.holes_played,
+            seed=self.seed,
+            deck_version=self.deck_version,
+            killer_test=killer,
+        )
 
     async def _await_connections(self) -> None:
         cfg = self._config
-        wait = min(cfg.player_connect_timeout_seconds,
-                   max(0.0, self._wall_remaining()))
+        wait = min(cfg.player_connect_timeout_seconds, max(0.0, self._wall_remaining()))
         connected = await asyncio.gather(
-            *(source.wait_connected(wait) for source in self._sources))
+            *(source.wait_connected(wait) for source in self._sources)
+        )
         for slot, ok in enumerate(connected):
             if ok:
                 continue
-            self._log(f"seat {slot} not connected after {wait:g}s; it plays "
-                      f"the literalist fallback until it connects")
+            self._log(
+                f"seat {slot} not connected after {wait:g}s; it plays "
+                f"the literalist fallback until it connects"
+            )
             if self._on_never_connected is not None:
                 try:
                     await self._on_never_connected(slot)
@@ -274,8 +227,7 @@ class Engine:
     async def _space_holes(self) -> None:
         """Floor the wall-clock gap between two hole reveals.
 
-        The Bedrock sidecar caps 30 requests/minute/episode; an all-scripted
-        episode would otherwise burst it.
+        Scripted and native language players use the same ordinary reveal pace.
         """
         gap = self._config.min_hole_spacing_seconds
         if gap <= 0 or self._last_reveal == 0.0:
@@ -291,16 +243,21 @@ class Engine:
         spec = self.deck[self.spec_keys[hole - 1]]
         self._last_reveal = time.monotonic()
         prompt = clean_text(spec.PROMPT)
-        self._emit("hole_start", hole=hole, spec_key=spec.KEY,
-                   title=clean_text(spec.TITLE, 48),
-                   prompt_head=clean_text(prompt.replace("\n", " "), 160))
+        self._emit(
+            "hole_start",
+            hole=hole,
+            spec_key=spec.KEY,
+            title=clean_text(spec.TITLE, 48),
+            prompt_head=clean_text(prompt.replace("\n", " "), 160),
+        )
 
         submissions, causes = await self._collect(hole, spec)
 
         # 5/6. sanitise + load, 7. legality, 8. cross-fire, 9. par audit
         legality = await self._legality(spec, submissions)
         verdicts, par_fails, broken = await self._cross_fire(
-            spec, submissions, legality)
+            spec, submissions, legality
+        )
 
         breaches = [0, 0]
         for slot in range(cfg.num_seats):
@@ -319,60 +276,84 @@ class Engine:
             seat.breaches_taken += breaches[other]
             seat.par_fails += par_fails[slot]
             seat.tests_fired += sum(1 for s in verdicts[slot] if s["legal"])
-            seat.illegal_tests += sum(
-                1 for s in verdicts[slot] if not s["legal"])
+            seat.illegal_tests += sum(1 for s in verdicts[slot] if not s["legal"])
 
         # 10. beats
         for slot in range(cfg.num_seats):
             sub = submissions[slot]
-            self._emit("submission", hole=hole, slot=slot,
-                       impl_lines=len(sub["impl"].splitlines()),
-                       impl_chars=len(sub["impl"]),
-                       test_count=len(sub["tests"]), note=sub["note"],
-                       fallback=causes[slot])
+            self._emit(
+                "submission",
+                hole=hole,
+                slot=slot,
+                impl_lines=len(sub["impl"].splitlines()),
+                impl_chars=len(sub["impl"]),
+                test_count=len(sub["tests"]),
+                note=sub["note"],
+                fallback=causes[slot],
+            )
         for slot in range(cfg.num_seats):
             for shot in verdicts[slot]:
                 self._emit("test_verdict", **shot)
                 self.shots.append(shot)
         for slot in range(cfg.num_seats):
-            self._emit("par_result", hole=hole, slot=slot,
-                       par_fails=par_fails[slot],
-                       par_total=cfg.par_tests_per_hole)
-        self._emit("hole_score", hole=hole, score=list(score),
-                   cumulative=list(cumulative))
+            self._emit(
+                "par_result",
+                hole=hole,
+                slot=slot,
+                par_fails=par_fails[slot],
+                par_total=cfg.par_tests_per_hole,
+            )
+        self._emit(
+            "hole_score", hole=hole, score=list(score), cumulative=list(cumulative)
+        )
 
+        record = self._hole_record(
+            hole,
+            spec,
+            submissions,
+            causes,
+            verdicts,
+            par_fails,
+            broken,
+            score,
+            cumulative,
+        )
+        if self._on_applied is not None:
+            self._on_applied(hole, submissions, record)
         if self._on_hole is not None:
-            self._on_hole(self._hole_record(
-                hole, spec, submissions, causes, verdicts, par_fails, broken,
-                score, cumulative))
+            self._on_hole(record)
         if self._on_progress is not None:
             try:
                 self._on_progress(hole, list(cumulative), None)
             except Exception as exc:  # noqa: BLE001
                 self._log(f"progress hook raised {type(exc).__name__}: {exc}")
         self._history_push(hole, spec, submissions, verdicts, par_fails, score)
-        self._log(f"hole {hole} ({spec.KEY}): score {score} cumulative "
-                  f"{cumulative} breaches {breaches} par_fails {par_fails}")
+        self._log(
+            f"hole {hole} ({spec.KEY}): score {score} cumulative "
+            f"{cumulative} breaches {breaches} par_fails {par_fails}"
+        )
 
     # -- steps 1-4: the parallel batch, one retry, then the fallback ---------
 
     async def _collect(self, hole: int, spec) -> tuple[list[dict], list]:
         cfg = self._config
-        payloads = [self._observation_message(hole, spec, slot, retry=False)
-                    for slot in range(cfg.num_seats)]
-        deadline = min(cfg.hole_deadline_seconds,
-                       max(1.0, self._wall_remaining()))
+        payloads = [
+            self._observation_message(hole, spec, slot, retry=False)
+            for slot in range(cfg.num_seats)
+        ]
+        deadline = min(cfg.hole_deadline_seconds, max(1.0, self._wall_remaining()))
         replies = await self._batch(range(cfg.num_seats), payloads, deadline)
 
         retry_slots = [slot for slot, (msg, _) in replies.items() if msg is None]
         if retry_slots:
             retry_payloads = [
                 self._observation_message(hole, spec, slot, retry=True)
-                for slot in retry_slots]
-            retry_deadline = min(cfg.retry_deadline_seconds,
-                                 max(1.0, self._wall_remaining()))
-            again = await self._batch(retry_slots, retry_payloads,
-                                      retry_deadline)
+                for slot in retry_slots
+            ]
+            retry_deadline = min(
+                cfg.retry_deadline_seconds, max(1.0, self._wall_remaining())
+            )
+            again = await self._batch(retry_slots, retry_payloads, retry_deadline)
             replies.update(again)
 
         submissions: list[dict] = []
@@ -386,12 +367,12 @@ class Engine:
                 seat.fallback_causes[cause] += 1
                 message = literalist(spec, hole, cfg.max_tests_per_hole)
                 causes.append({"cause": cause, "baseline": "literalist"})
-                self._log(f"seat {slot} hole {hole}: {cause} -> literalist "
-                          f"fallback")
+                self._log(f"seat {slot} hole {hole}: {cause} -> literalist fallback")
             else:
                 causes.append(None)
             submissions.append(
-                sanitize_submission(message, hole, cfg.max_tests_per_hole))
+                sanitize_submission(message, hole, cfg.max_tests_per_hole)
+            )
         return submissions, causes
 
     async def _batch(self, slots, payloads, deadline: float) -> dict:
@@ -401,22 +382,37 @@ class Engine:
         deadline_at = time.monotonic() + deadline
         for payload in payloads:
             payload["deadline_seconds"] = deadline
+            if self._on_window is not None:
+                self._on_window(ObservationPacket.model_validate(payload))
 
         async def ask(slot: int, payload: dict):
             source = self._sources[slot]
             try:
-                return await source.get_submission(payload["hole"], payload,
-                                                   deadline_at)
+                return await source.get_submission(
+                    payload["hole"], payload, deadline_at
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                self._log(f"seat {slot} source raised "
-                          f"{type(exc).__name__}: {exc} (host_error)")
+                self._log(
+                    f"seat {slot} source raised {type(exc).__name__} (host_error)"
+                )
                 return None, "host_error"
 
-        results = await asyncio.gather(
-            *(ask(slot, payload) for slot, payload in zip(slots, payloads)))
-        return dict(zip(slots, results))
+        owners = [
+            lifecycle.owned_task(ask(slot, payload))
+            for slot, payload in zip(slots, payloads)
+        ]
+        try:
+            results = await asyncio.gather(*owners)
+            return dict(zip(slots, results))
+        finally:
+            if not await lifecycle.settle(
+                set(owners), lifecycle.cleanup_deadline(), cancel=True
+            ):
+                raise lifecycle.OwnershipUnsettled(
+                    "engine submission writers did not join"
+                )
 
     # -- steps 7-9: the sandbox ---------------------------------------------
 
@@ -444,8 +440,10 @@ class Engine:
                         test["expect"] = expect
                         if len(args) != arity:
                             record["reason"] = "arity"
-                        elif len(compact(args)) > contract.MAX_ARGS_CHARS \
-                                or len(compact(expect)) > contract.MAX_EXPECT_CHARS:
+                        elif (
+                            len(compact(args)) > contract.MAX_ARGS_CHARS
+                            or len(compact(expect)) > contract.MAX_EXPECT_CHARS
+                        ):
                             record["reason"] = "oversize"
                 if record["reason"] is None:
                     record["call_id"] = next_id
@@ -453,14 +451,13 @@ class Engine:
                     next_id += 1
                 index[slot].append(record)
 
-        batch = None
+        batch = BatchResult()
         if calls:
-            batch = await asyncio.to_thread(
-                self._sandbox.run_reference, spec.REFERENCE_IMPL, calls)
+            batch = await self._sandbox.run_reference(spec.REFERENCE_IMPL, calls)
             if batch.broken:
                 raise SandboxError(
-                    f"spec {spec.KEY}: the reference did not load "
-                    f"({batch.broken})")
+                    f"spec {spec.KEY}: the reference did not load ({batch.broken})"
+                )
 
         for slot, sub in enumerate(submissions):
             seen: set[str] = set()
@@ -469,8 +466,9 @@ class Engine:
                     continue
                 result = batch.get(record["call_id"])
                 if not result.ok:
-                    record["reason"] = ("ref_timeout" if result.kind == "timeout"
-                                        else "ref_error")
+                    record["reason"] = (
+                        "ref_timeout" if result.kind == "timeout" else "ref_error"
+                    )
                     continue
                 if not equal(result.value, test["expect"]):
                     record["reason"] = "ref_mismatch"
@@ -485,36 +483,37 @@ class Engine:
     async def _cross_fire(self, spec, submissions, legality):
         """Fire each seat's legal tests at the other's impl, then audit both."""
         cfg = self._config
-        par_tests = list(spec.PAR_TESTS)[:cfg.par_tests_per_hole]
+        par_tests = list(spec.PAR_TESTS)[: cfg.par_tests_per_hole]
         jobs = []
         for defender in range(cfg.num_seats):
             attacker = 1 - defender
             calls = []
-            for test, record in zip(submissions[attacker]["tests"],
-                                    legality[attacker]):
+            for test, record in zip(submissions[attacker]["tests"], legality[attacker]):
                 if record["reason"] is None:
                     calls.append({"id": test["idx"], "args": test["args"]})
             for i, par in enumerate(par_tests):
                 calls.append({"id": PAR_ID_BASE + i, "args": par["args"]})
             jobs.append((defender, calls))
 
-        batches = await asyncio.gather(*(
-            asyncio.to_thread(self._sandbox.run,
-                              submissions[defender]["impl"], calls)
-            for defender, calls in jobs))
+        batches = await asyncio.gather(
+            *(
+                self._sandbox.run(submissions[defender]["impl"], calls)
+                for defender, calls in jobs
+            )
+        )
 
         broken = [b.broken for b in batches]
         for slot, reason in enumerate(broken):
             if reason:
-                self._log(f"seat {slot} hole {self.current_hole}: impl broken "
-                          f"({reason})")
+                self._log(
+                    f"seat {slot} hole {self.current_hole}: impl broken ({reason})"
+                )
 
         verdicts: list[list[dict]] = [[] for _ in range(cfg.num_seats)]
         for attacker in range(cfg.num_seats):
             defender = 1 - attacker
             batch = batches[defender]
-            for test, record in zip(submissions[attacker]["tests"],
-                                    legality[attacker]):
+            for test, record in zip(submissions[attacker]["tests"], legality[attacker]):
                 shot = {
                     "hole": self.current_hole,
                     "slot": attacker,
@@ -534,7 +533,8 @@ class Engine:
                     held = result.ok and equal(result.value, test["expect"])
                     shot["outcome"] = "held" if held else "breach"
                     shot["observed"] = clean_text(
-                        describe(result), contract.MAX_OBSERVED_CHARS)
+                        describe(result), contract.MAX_OBSERVED_CHARS
+                    )
                 verdicts[attacker].append(shot)
 
         par_fails = []
@@ -574,35 +574,46 @@ class Engine:
             "title": clean_text(spec.TITLE, 48),
             "prompt": clean_text(spec.PROMPT),
             "signature": spec.SIGNATURE,
-            "examples": [{"args": ex["args"], "expect": ex["expect"]}
-                         for ex in spec.EXAMPLES],
+            "examples": [
+                {"args": ex["args"], "expect": ex["expect"]} for ex in spec.EXAMPLES
+            ],
         }
 
-    def _observation_message(self, hole: int, spec, slot: int,
-                             retry: bool) -> dict:
+    def _observation_message(self, hole: int, spec, slot: int, retry: bool) -> dict:
         cfg = self._config
         other = 1 - slot
         scores = self.scores
-        return {
-            "type": contract.MSG_OBSERVATION,
-            "hole": hole,
-            "deadline_seconds": cfg.hole_deadline_seconds,
-            "retry": retry,
-            "observation": {
+        return ObservationPacket.model_validate(
+            {
+                "type": contract.MSG_OBSERVATION,
+                "slot": slot,
+                "profile": self.native_profiles[slot],
                 "hole": hole,
-                "holes": cfg.holes,
-                "spec": self._spec_view(spec),
-                "you": {"alias": contract.ALIASES[slot], "slot": slot,
-                        "score": scores[slot]},
-                "opponent": {"alias": contract.ALIASES[other], "slot": other,
-                             "score": scores[other]},
-                "history": list(self._history[slot]),
-                "rules": self.rules(),
-            },
-        }
+                "deadline_seconds": cfg.hole_deadline_seconds,
+                "retry": retry,
+                "observation": {
+                    "hole": hole,
+                    "holes": cfg.holes,
+                    "spec": self._spec_view(spec),
+                    "you": {
+                        "alias": contract.ALIASES[slot],
+                        "slot": slot,
+                        "score": scores[slot],
+                    },
+                    "opponent": {
+                        "alias": contract.ALIASES[other],
+                        "slot": other,
+                        "score": scores[other],
+                    },
+                    "history": list(self._history[slot]),
+                    "rules": self.rules(),
+                },
+            }
+        ).model_dump(mode="json")
 
-    def _history_push(self, hole, spec, submissions, verdicts, par_fails,
-                      score) -> None:
+    def _history_push(
+        self, hole, spec, submissions, verdicts, par_fails, score
+    ) -> None:
         for slot in range(self._config.num_seats):
             other = 1 - slot
             entry = {
@@ -610,22 +621,34 @@ class Engine:
                 "spec_key": spec.KEY,
                 "hole_score": score[slot],
                 "your_tests": [
-                    {"name": s["name"], "args": s["args"],
-                     "expect": s["expect"], "legal": s["legal"],
-                     "legal_reason": s["legal_reason"],
-                     "outcome": s["outcome"]}
-                    for s in verdicts[slot]],
+                    {
+                        "name": s["name"],
+                        "args": s["args"],
+                        "expect": s["expect"],
+                        "legal": s["legal"],
+                        "legal_reason": s["legal_reason"],
+                        "outcome": s["outcome"],
+                    }
+                    for s in verdicts[slot]
+                ],
                 "their_tests": [
-                    {"name": s["name"], "args": s["args"],
-                     "expect": s["expect"], "why": s["why"],
-                     "outcome": s["outcome"], "your_result": s["observed"]}
-                    for s in verdicts[other]],
+                    {
+                        "name": s["name"],
+                        "args": s["args"],
+                        "expect": s["expect"],
+                        "why": s["why"],
+                        "outcome": s["outcome"],
+                        "your_result": s["observed"],
+                    }
+                    for s in verdicts[other]
+                ],
                 "their_note": submissions[other]["note"],
                 "your_par_fails": par_fails[slot],
                 "their_par_fails": par_fails[other],
             }
             while len(compact(entry)) > MAX_HISTORY_CHARS and (
-                    entry["your_tests"] or entry["their_tests"]):
+                entry["your_tests"] or entry["their_tests"]
+            ):
                 if len(entry["their_tests"]) >= len(entry["your_tests"]):
                     entry["their_tests"].pop()
                 else:
@@ -633,35 +656,59 @@ class Engine:
             self._history[slot].append(entry)
             del self._history[slot][:-HISTORY_HOLES]
 
-    def _hole_record(self, hole, spec, submissions, causes, verdicts,
-                     par_fails, broken, score, cumulative) -> dict:
+    def _hole_record(
+        self,
+        hole,
+        spec,
+        submissions,
+        causes,
+        verdicts,
+        par_fails,
+        broken,
+        score,
+        cumulative,
+    ) -> dict:
         seats = []
         for slot in range(self._config.num_seats):
             sub = submissions[slot]
-            seats.append({
-                "slot": slot,
-                "impl": sub["impl"],
-                "impl_lines": len(sub["impl"].splitlines()),
-                "broken": bool(broken[slot]),
-                "broken_reason": clean_text(
-                    broken[slot], contract.MAX_BROKEN_REASON_CHARS)
-                if broken[slot] else None,
-                "note": sub["note"],
-                "fallback": causes[slot],
-                "dropped_tests": sub["dropped_tests"],
-                "tests": [
-                    {"idx": s["idx"], "name": s["name"], "args": s["args"],
-                     "expect": s["expect"], "why": s["why"],
-                     "legal": s["legal"], "legal_reason": s["legal_reason"],
-                     "outcome": s["outcome"], "observed": s["observed"]}
-                    for s in verdicts[slot]],
-                "par_fails": par_fails[slot],
-                "par_total": self._config.par_tests_per_hole,
-            })
+            seats.append(
+                {
+                    "slot": slot,
+                    "impl": sub["impl"],
+                    "impl_lines": len(sub["impl"].splitlines()),
+                    "broken": bool(broken[slot]),
+                    "broken_reason": clean_text(
+                        broken[slot], contract.MAX_BROKEN_REASON_CHARS
+                    )
+                    if broken[slot]
+                    else None,
+                    "note": sub["note"],
+                    "fallback": causes[slot],
+                    "dropped_tests": sub["dropped_tests"],
+                    "tests": [
+                        {
+                            "idx": s["idx"],
+                            "name": s["name"],
+                            "args": s["args"],
+                            "expect": s["expect"],
+                            "why": s["why"],
+                            "legal": s["legal"],
+                            "legal_reason": s["legal_reason"],
+                            "outcome": s["outcome"],
+                            "observed": s["observed"],
+                        }
+                        for s in verdicts[slot]
+                    ],
+                    "par_fails": par_fails[slot],
+                    "par_total": self._config.par_tests_per_hole,
+                }
+            )
         return {
             "hole": hole,
-            "spec": {**self._spec_view(spec),
-                     "ambiguity": clean_text(spec.AMBIGUITY, 140)},
+            "spec": {
+                **self._spec_view(spec),
+                "ambiguity": clean_text(spec.AMBIGUITY, 140),
+            },
             "seats": seats,
             "hole_score": list(score),
             "cumulative": list(cumulative),
