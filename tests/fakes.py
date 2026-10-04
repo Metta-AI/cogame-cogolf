@@ -19,8 +19,14 @@ from cogame_cogolf.specs import load_deck
 class ScriptedSource:
     """Answers every hole with a scripted baseline's submission."""
 
-    def __init__(self, name: str = "literalist", *, delay: float = 0.0,
-                 silent_holes: tuple = (), reply=None):
+    def __init__(
+        self,
+        name: str = "literalist",
+        *,
+        delay: float = 0.0,
+        silent_holes: tuple = (),
+        reply=None,
+    ):
         self.name = name
         self.delay = delay
         self.silent_holes = set(silent_holes)
@@ -65,8 +71,8 @@ class FakeSandbox:
             batch.results[call["id"]] = CallResult(ok=True, value=value)
         return batch
 
-    def run(self, source: str, calls: list[dict], *, cpu_seconds=None):
+    async def run(self, source: str, calls: list[dict], *, cpu_seconds=None):
         return self._run(source, calls)
 
-    def run_reference(self, source: str, calls: list[dict]):
+    async def run_reference(self, source: str, calls: list[dict]):
         return self._run(source, calls)

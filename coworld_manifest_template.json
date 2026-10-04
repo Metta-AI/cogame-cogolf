@@ -12,7 +12,7 @@
     "replay_viewer": {
       "bundle": "static-replay-viewer"
     },
-    "description": "Cogolf is a nine-hole match between two code agents. Each hole reveals ONE deliberately ambiguous spec. Both seats simultaneously submit an implementation of solve(...) and up to five test cases. Then the harness cross-fires: your tests are shot at their code, theirs at yours, and a hidden four-case par suite audits both. A hidden reference implementation settles which reading of the ambiguous clause is real, and a test only counts if the reference agrees with it — so the contest is to read the intent better than your opponent, then aim at where their reading differs. Scoring is zero-sum: (your breaching tests + their audit failures) - (their breaching tests + your audit failures). Every submitted implementation runs in a sandboxed subprocess with CPU, memory and syscall limits. The replay shows each test as a dart fired at the opponent's code-fortress, deflected or breaching with crumbling masonry, with the spec hanging as a scroll above the arena.",
+    "description": "Cogolf is a nine-hole match between two code agents. Each hole reveals ONE deliberately ambiguous spec. Both seats simultaneously submit an implementation of solve(...) and up to five test cases. Then the harness cross-fires: your tests are shot at their code, theirs at yours, and a hidden four-case par suite audits both. A hidden reference implementation settles which reading of the ambiguous clause is real, and a test only counts if the reference agrees with it \u2014 so the contest is to read the intent better than your opponent, then aim at where their reading differs. Scoring is zero-sum: (your breaching tests + their audit failures) - (their breaching tests + your audit failures). Every submitted implementation runs in a sandboxed subprocess with CPU, memory and syscall limits. The replay shows each test as a dart fired at the opponent's code-fortress, deflected or breaching with crumbling masonry, with the spec hanging as a scroll above the arena.",
     "owner": "daveey@softmax.com",
     "runnable": {
       "type": "game",
@@ -153,6 +153,59 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "default": 700
+        },
+        "native_profiles": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            {},
+            {}
+          ],
+          "description": "Private frozen native model, decoder and strategy profiles in external seat order.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "cogolf_native_text_v1"
+                ],
+                "default": "cogolf_native_text_v1"
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "default": "anthropic/claude-haiku-4.5"
+              },
+              "temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.7
+              },
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8192,
+                "default": 1800
+              },
+              "top_p": {
+                "type": "integer",
+                "enum": [
+                  1
+                ],
+                "default": 1
+              },
+              "strategy": {
+                "type": "string",
+                "maxLength": 12000,
+                "default": ""
+              }
+            }
+          }
         }
       }
     },
@@ -443,7 +496,7 @@
       "id": "pedant",
       "name": "pedant baseline",
       "type": "player",
-      "description": "Scripted baseline: the edge-case sniper. Its implementation is right on the common path and wrong on a different clause than the literalist's, and it fires aggressive boundary tests — some of which the reference rejects as illegal, which is exactly the lesson it exists to demonstrate.",
+      "description": "Scripted baseline: the edge-case sniper. Its implementation is right on the common path and wrong on a different clause than the literalist's, and it fires aggressive boundary tests \u2014 some of which the reference rejects as illegal, which is exactly the lesson it exists to demonstrate.",
       "image": "{{PLAYER_IMAGE}}",
       "run": [
         "/bin/cogolf-player"
@@ -467,7 +520,7 @@
     {
       "id": "duel",
       "name": "Nine holes (2 seats)",
-      "description": "The full match: nine holes drawn from the core deck, 40 s per hole with one 15 s retry, five tests a hole. Zero-sum; the score range is ±81.",
+      "description": "The full match: nine holes drawn from the core deck, 40 s per hole with one 15 s retry, five tests a hole. Zero-sum; the score range is \u00b181.",
       "game_config": {
         "players": [
           {

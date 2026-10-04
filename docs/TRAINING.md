@@ -1,70 +1,85 @@
-# Metta post-training data
+# Private native decisions and teacher collection
 
-The exporter runs complete Cogolf matches with the shipped `literalist` and
-`pedant` players, production hole engine, and real sandbox. Each turn records
-the model-facing prompt built by the hosted player and its scripted reply.
-The reply passes the game's submission validator. Both certified variants are
-supported.
+The ordinary language player uses native Messages through `COWORLD_LLM_ENDPOINT`.
+A missing endpoint fails startup. The player cannot use direct Anthropic,
+Bedrock, or a provider credential fallback. Version 2 player images must be
+refreshed together with the game; version 1 packets are not accepted.
+
+Each engine-issued decision window contains the exact private observation and
+frozen native model, decoder and prompt profile. Registration is recorded player
+input; it establishes no serving identity. The engine independently parses
+the selected received completion and compares it with the separately submitted
+control. The sandbox then installs sanitized controls and produces legality,
+cross-fire, hidden audit and zero-sum scoring effects.
+
+`COGAME_SAVE_TRAJECTORY_URI` selects a private absolute `file://` destination.
+The runtime must supply `COWORLD_EPISODE_ID`, `COWORLD_SOURCE_REVISION`, and
+`COWORLD_GAME_VERSION`; `COWORLD_GAME_IMAGE_DIGEST` records the actual image when
+available. Collection does not infer source or serving identity from player text.
+
+The private `.partial` spool preserves issued windows, received byte prefixes,
+actual headers and engine applications. A final complete-episode JSONL file is
+written only after the engine and every admitted player owner join. An unresolved
+owner retains its writable partial evidence and prevents final/public completion.
+No final archive is inferred from cancellation or a requested stop.
+
+Native model attempts preserve exact requests, raw response strings, received
+body bytes, platform call identifiers, served identity and actual sampling
+metadata. Thinking remains private auxiliary evidence. Missing tokens or
+probabilities remain absent. HTTP fixtures establish protocol behavior, not an
+authenticated platform archive or model strength.
+
+The native profile explicitly defaults to temperature `0.7`, top-p `1`, and
+1,800 output tokens. This profile is new: the original provider request omitted
+temperature and top-p. `COWORLD_LLM_TEMPERATURE` freezes an explicit override
+before the first private window. Captured `full_softmax` evidence must carry
+the exact requested temperature; stored `full_softmax_temperature_one` evidence
+retains its original fields and requires temperature `1`. Greedy responses
+retain no invented draw probabilities.
+
+## Source-controlled teachers
 
 ```sh
 uv sync --frozen
-PYTHONPATH=server:. uv run --no-sync python tools/export_posttrain.py \
-  /tmp/cogolf-duel-dataset 10 --variant duel
-PYTHONPATH=server:. uv run --no-sync python tools/export_posttrain.py \
-  /tmp/cogolf-blitz-dataset 10 --variant blitz
+PYTHONPATH=server:. uv run --no-sync python tools/export_posttrain.py --game-version 0.2.0 \
+  /tmp/cogolf-duel-private 10 --variant duel
+PYTHONPATH=server:. uv run --no-sync python tools/export_posttrain.py --game-version 0.2.0 \
+  /tmp/cogolf-blitz-private 10 --variant blitz
 ```
 
-`train.jsonl` and `validation.jsonl` split complete games by seed. The exporter
-requires ten games and refuses to overwrite an existing directory. Local
-collection sets the inter-hole pacing delay to zero; scoring and sandbox
-execution still use the production engine.
+The collector runs complete games with the shipped `literalist` and `pedant`
+teachers and the ordinary sandbox. It retains ordinary pacing and both seats.
+The teacher reads only the private observation. Its text must round-trip through
+the ordinary parser to the actual installed control. Hidden-reference and audit
+permutation tests protect that visibility boundary.
 
-From a Metta checkout with the post-training package installed:
+The output contains private complete episodes and an unreviewed manifest, with
+owner-only permissions. It does not emit training labels or choose a split.
+Content-bound external source review is required before scripted labels can enter
+Metta post-training. Provider-backed labels additionally require modern
+platform-authenticated receipts and immutable episode/participant context.
+Whole games with the same game and seed remain in one split across variants.
 
-```sh
-uv run --package metta-posttrain --extra train python -m metta_posttrain.train \
-  --dataset /tmp/cogolf-duel-dataset \
-  --output /tmp/cogolf-adapter --model Qwen/Qwen3-0.6B \
-  --max-steps 100 --max-length 4096
-```
+The shared Metta training path is SLIME. Configure a real saved checkpoint,
+tokenizer, chat template and sampling policy through its trusted native gateway.
+Baseline and trained evaluations must use the same game profile and budgets.
+These source changes alone establish no trained strength or production rollout.
 
-Ten seeded duel games exported 144 train and 36 validation examples; blitz
-exported 80 and 20. All fit a 4,096-token context. One CPU optimizer step
-reduced four-example validation loss from 1.69997 to 1.69402 for duel and
-from 1.70176 to 1.69579 for blitz. These checks verify the training path;
-they do not establish stronger play than the scripted teachers.
+## Numeric research bridge
 
-## Numeric training
+The four-choice numeric catalog combines the two baseline implementations and
+test suites. It trains baseline selection, not arbitrary ordinary language code
+submission. Historical numeric checkpoints and corpora retain their stored
+contracts. They do not establish native language runtime parity or qualified
+modern text labels.
 
-`tools/train_bridge.py` exposes the exact hosted seat observation and four
-choices: the published `literalist` or `pedant` implementation paired with
-either baseline's tests. Both seats choose before the production engine and
-sandbox resolve a hole. Each decision has 35 numeric features, and complete
-matches return zero-sum score and utility values. This catalog trains baseline
-selection; the post-training path above supports arbitrary code submissions.
+The bridge defaults to `--mode language`: exact ordinary native prompt rendering,
+source observation-only teacher text, parser and sandbox-installed controls.
+It is a local decision bridge, without platform receipts or live native inference.
+`--mode numeric` explicitly selects the historical four-choice research catalog.
+Neither mode alone qualifies a hosted rollout or supervised corpus.
 
-```sh
-uv run python tools/test_train_bridge.py
-```
-
-From a Metta checkout with the training stack installed, use the game bridge
-command with either the native PufferLib recipe or the Metta RL recipe:
-
-```python
-from recipes.external.coworld import train as puffer_train
-from recipes.external.coworld_metta_rl import train as metta_rl_train
-
-command = ["python", "tools/train_bridge.py", "coworld_manifest_template.json", "duel"]
-puffer = puffer_train(command=command, players=2)
-metta_rl = metta_rl_train(command=command, players=2)
-```
-
-Use `blitz` in place of `duel` for the five-hole variant. Set the command paths
-to absolute paths when invoking either recipe outside this checkout.
-
-Both variants completed 512 Metta RL timesteps. At epoch ten, evaluation
-mean return was 0.037 for duel and 0.075 for blitz. Native PufferLib CUDA
-completed 1,024 timesteps per variant, then reloaded each checkpoint for
-held-out evaluation (four episodes per seed): duel scores were 4.29 and
-5.86 for seeds 101 and 102; blitz scores were 3.5 and 2.0. This verifies
-execution and checkpoint loading, not a gain over the baseline players.
+The publish template is versionless: Coworld inserts the build's `--version`.
+Teacher collection requires `--game-version` matching that intended build, for
+example `0.2.0`. The private runtime configuration separately records rule
+version `GV02`. These describe different contracts.

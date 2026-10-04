@@ -154,6 +154,7 @@ jobs:
             --compose compose.yaml \
             --template coworld_manifest_template.json \
             --output dist/coworld_manifest.json
+          uv run --no-project --with "$COWORLD_PKG" python tools/pin_manifest_source.py dist/coworld_manifest.json
           test -s dist/coworld_manifest.json
 
       - name: Certify locally

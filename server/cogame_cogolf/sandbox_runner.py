@@ -33,23 +33,63 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cogame_cogolf.values import BadValue, canon  # noqa: E402
+from cogame_cogolf.filesystem import restrict_filesystem
+from cogame_cogolf.values import BadValue, canon
 
 ADDRESS_SPACE_BYTES = 256 * 1024 * 1024
 MAX_OPEN_FILES = 16
 MAX_TEXT_CHARS = 300
 
 # Audit-event families the hook refuses outright.
-DENIED_PREFIXES = ("socket.", "subprocess.", "os.exec", "ctypes.", "shutil.",
-                   "urllib.", "webbrowser.", "ftplib.", "http.client.",
-                   "smtplib.", "sqlite3.", "os.spawn", "os.fork", "pty.")
-DENIED_EVENTS = frozenset({"os.system", "os.posix_spawn", "os.putenv",
-                           "os.remove", "os.rename", "os.rmdir", "os.mkdir",
-                           "os.chmod", "os.chdir", "os.startfile"})
-DENIED_IMPORTS = frozenset({"socket", "subprocess", "ctypes",
-                            "multiprocessing", "threading", "_thread",
-                            "asyncio", "ssl", "urllib", "http", "shutil",
-                            "pty", "resource", "signal"})
+DENIED_PREFIXES = (
+    "socket.",
+    "subprocess.",
+    "os.exec",
+    "ctypes.",
+    "shutil.",
+    "urllib.",
+    "webbrowser.",
+    "ftplib.",
+    "http.client.",
+    "smtplib.",
+    "sqlite3.",
+    "os.spawn",
+    "os.fork",
+    "pty.",
+)
+DENIED_EVENTS = frozenset(
+    {
+        "os.system",
+        "os.posix_spawn",
+        "os.putenv",
+        "os.remove",
+        "os.rename",
+        "os.rmdir",
+        "os.mkdir",
+        "os.chmod",
+        "os.chdir",
+        "os.startfile",
+    }
+)
+DENIED_IMPORTS = frozenset(
+    {
+        "socket",
+        "subprocess",
+        "ctypes",
+        "_ctypes",
+        "multiprocessing",
+        "threading",
+        "_thread",
+        "asyncio",
+        "ssl",
+        "urllib",
+        "http",
+        "shutil",
+        "pty",
+        "resource",
+        "signal",
+    }
+)
 WRITE_MODES = frozenset("wxa+")
 
 
@@ -62,19 +102,22 @@ def _drop_privileges() -> None:
         import resource
     except ImportError:  # pragma: no cover - POSIX only
         return
-    for name, limit in (("RLIMIT_AS", (ADDRESS_SPACE_BYTES,
-                                       ADDRESS_SPACE_BYTES)),
-                        ("RLIMIT_FSIZE", (0, 0)),
-                        ("RLIMIT_NPROC", (0, 0)),
-                        ("RLIMIT_NOFILE", (MAX_OPEN_FILES, MAX_OPEN_FILES)),
-                        ("RLIMIT_CORE", (0, 0))):
+    for name, limit in (
+        ("RLIMIT_AS", (ADDRESS_SPACE_BYTES, ADDRESS_SPACE_BYTES)),
+        ("RLIMIT_FSIZE", (0, 0)),
+        ("RLIMIT_NPROC", (0, 0)),
+        ("RLIMIT_NOFILE", (MAX_OPEN_FILES, MAX_OPEN_FILES)),
+        ("RLIMIT_CORE", (0, 0)),
+    ):
         which = getattr(resource, name, None)
         if which is None:
             continue
         try:
-            soft, hard = resource.getrlimit(which)
-            wanted = (min(limit[0], hard) if hard >= 0 else limit[0],
-                      min(limit[1], hard) if hard >= 0 else limit[1])
+            _soft, hard = resource.getrlimit(which)
+            wanted = (
+                min(limit[0], hard) if hard >= 0 else limit[0],
+                min(limit[1], hard) if hard >= 0 else limit[1],
+            )
             resource.setrlimit(which, wanted)
         except (ValueError, OSError):
             pass  # best effort: an unsettable limit must not kill the batch
@@ -120,7 +163,9 @@ def _on_alarm(signum, frame):  # pragma: no cover - signal path
 
 def _clip(text: str) -> str:
     text = str(text).replace("\n", " ").strip()
-    return text if len(text) <= MAX_TEXT_CHARS else text[:MAX_TEXT_CHARS - 1] + "\u2026"
+    return (
+        text if len(text) <= MAX_TEXT_CHARS else text[: MAX_TEXT_CHARS - 1] + "\u2026"
+    )
 
 
 def _emit(line: dict) -> None:
@@ -136,10 +181,22 @@ def main() -> int:
         calls = job["calls"]
         cpu_seconds = float(job.get("cpu_seconds", 1.0))
     except Exception as exc:  # noqa: BLE001
-        _emit({"id": -1, "ok": False, "kind": "broken",
-               "text": _clip(f"bad job: {exc!r}")})
+        _emit(
+            {
+                "id": -1,
+                "ok": False,
+                "kind": "broken",
+                "text": _clip(f"bad job: {exc!r}"),
+            }
+        )
         return 0
 
+    restrict_filesystem()
+    # The trusted Landlock installer loads ctypes before the audit hook.
+    # Remove that cache so submitted imports still pass through its denial.
+    for module in tuple(sys.modules):
+        if module == "_ctypes" or module == "ctypes" or module.startswith("ctypes."):
+            del sys.modules[module]
     _drop_privileges()
     signal.signal(signal.SIGVTALRM, _on_alarm)
     sys.addaudithook(_audit)
@@ -149,10 +206,16 @@ def main() -> int:
         exec(compile(source, "<submission>", "exec"), namespace)  # noqa: S102
         solve = namespace.get("solve")
         if not callable(solve):
-            raise ValueError("no callable solve(...) defined")
+            raise TypeError("no callable solve(...) defined")
     except BaseException as exc:  # noqa: BLE001 - any failure is 'broken'
-        _emit({"id": -1, "ok": False, "kind": "broken",
-               "text": _clip(f"{type(exc).__name__}: {exc}")})
+        _emit(
+            {
+                "id": -1,
+                "ok": False,
+                "kind": "broken",
+                "text": _clip(f"{type(exc).__name__}: {exc}"),
+            }
+        )
         return 0
 
     for call in calls:
@@ -165,16 +228,34 @@ def main() -> int:
             _emit({"id": call_id, "ok": True, "value": canon(value)})
         except _Timeout:
             signal.setitimer(signal.ITIMER_VIRTUAL, 0)
-            _emit({"id": call_id, "ok": False, "kind": "timeout",
-                   "text": f"call exceeded {cpu_seconds:g}s of CPU"})
+            _emit(
+                {
+                    "id": call_id,
+                    "ok": False,
+                    "kind": "timeout",
+                    "text": f"call exceeded {cpu_seconds:g}s of CPU",
+                }
+            )
         except BadValue as exc:
             signal.setitimer(signal.ITIMER_VIRTUAL, 0)
-            _emit({"id": call_id, "ok": False, "kind": "bad_value",
-                   "text": _clip(str(exc))})
+            _emit(
+                {
+                    "id": call_id,
+                    "ok": False,
+                    "kind": "bad_value",
+                    "text": _clip(str(exc)),
+                }
+            )
         except BaseException as exc:  # noqa: BLE001
             signal.setitimer(signal.ITIMER_VIRTUAL, 0)
-            _emit({"id": call_id, "ok": False, "kind": "error",
-                   "text": _clip(f"{type(exc).__name__}: {exc}")})
+            _emit(
+                {
+                    "id": call_id,
+                    "ok": False,
+                    "kind": "error",
+                    "text": _clip(f"{type(exc).__name__}: {exc}"),
+                }
+            )
     return 0
 
 

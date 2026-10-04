@@ -9,6 +9,7 @@ import json
 import pytest
 from cogame_cogolf import contract
 from cogame_cogolf.config import DEFAULT_HOLES
+from cogame_cogolf.policy_tables import POLICY_TABLES
 from cogame_cogolf.specs import DECK_VERSION, DECKS, DeckError, deck_keys, load_deck
 from cogame_cogolf.specs._util import load_impl
 from cogame_cogolf.values import BadValue, canon, equal
@@ -54,30 +55,42 @@ def test_spec_declares_every_attribute(spec):
     assert spec.SIGNATURE["params"] and spec.SIGNATURE["returns"]
     assert len(spec.EXAMPLES) == 2
     assert len(spec.PAR_TESTS) == contract.PAR_TESTS_PER_HOLE
-    assert len(spec.SAFE_TESTS) == contract.MAX_TESTS_PER_HOLE
-    assert len(spec.EDGE_TESTS) == contract.MAX_TESTS_PER_HOLE
+    assert len(POLICY_TABLES[spec.KEY].safe_tests) == contract.MAX_TESTS_PER_HOLE
+    assert len(POLICY_TABLES[spec.KEY].edge_tests) == contract.MAX_TESTS_PER_HOLE
     assert callable(spec.reference)
     assert "def solve" in spec.REFERENCE_IMPL
 
 
 @pytest.mark.parametrize("spec", SPECS)
 def test_reference_passes_its_own_examples_and_par_tests(spec):
-    for case in list(spec.EXAMPLES) + list(spec.PAR_TESTS) + list(spec.SAFE_TESTS):
-        assert agrees(spec.reference, case["args"], case["expect"]), \
+    for case in (
+        list(spec.EXAMPLES)
+        + list(spec.PAR_TESTS)
+        + list(POLICY_TABLES[spec.KEY].safe_tests)
+    ):
+        assert agrees(spec.reference, case["args"], case["expect"]), (
             f"{spec.KEY}: reference disagrees with {case}"
+        )
 
 
 @pytest.mark.parametrize("spec", SPECS)
 def test_every_recorded_value_is_json_round_trippable(spec):
-    for case in (list(spec.EXAMPLES) + list(spec.PAR_TESTS)
-                 + list(spec.SAFE_TESTS) + list(spec.EDGE_TESTS)):
+    for case in (
+        list(spec.EXAMPLES)
+        + list(spec.PAR_TESTS)
+        + list(POLICY_TABLES[spec.KEY].safe_tests)
+        + list(POLICY_TABLES[spec.KEY].edge_tests)
+    ):
         for value in (case["args"], case["expect"]):
             assert json.loads(json.dumps(canon(value))) == canon(value)
 
 
 @pytest.mark.parametrize("spec", SPECS)
 def test_baselines_compile_and_define_solve(spec):
-    for source in (spec.LITERAL_IMPL, spec.NAIVE_IMPL):
+    for source in (
+        POLICY_TABLES[spec.KEY].literal_impl,
+        POLICY_TABLES[spec.KEY].naive_impl,
+    ):
         assert isinstance(source, str)
         assert len(source) <= contract.MAX_IMPL_CHARS
         assert callable(load_impl(source))
@@ -88,13 +101,15 @@ def test_the_two_baselines_diverge_on_different_clauses(spec):
     """The literalist and the pedant must each be wrong where the other is
     right — that is what makes them break each other, and it is what keeps
     a scripted-vs-scripted certification episode from being a null match."""
-    literal = load_impl(spec.LITERAL_IMPL)
-    naive = load_impl(spec.NAIVE_IMPL)
+    literal = load_impl(POLICY_TABLES[spec.KEY].literal_impl)
+    naive = load_impl(POLICY_TABLES[spec.KEY].naive_impl)
     literal_only, naive_only = [], []
-    cases = ([("par", c) for c in spec.PAR_TESTS]
-             + [("safe", c) for c in spec.SAFE_TESTS]
-             + [("edge", c) for c in spec.EDGE_TESTS]
-             + [("example", c) for c in spec.EXAMPLES])
+    cases = (
+        [("par", c) for c in spec.PAR_TESTS]
+        + [("safe", c) for c in POLICY_TABLES[spec.KEY].safe_tests]
+        + [("edge", c) for c in POLICY_TABLES[spec.KEY].edge_tests]
+        + [("example", c) for c in spec.EXAMPLES]
+    )
     for label, case in cases:
         ok, expected = run(spec.reference, case["args"])
         if not ok:
@@ -102,7 +117,7 @@ def test_the_two_baselines_diverge_on_different_clauses(spec):
         lit = agrees(literal, case["args"], expected)
         nai = agrees(naive, case["args"], expected)
         if lit and not nai:
-            naive_only.append((label, case["name"] if "name" in case else label))
+            naive_only.append((label, case.get("name", label)))
         if nai and not lit:
             literal_only.append((label, case.get("name", label)))
     assert literal_only, f"{spec.KEY}: the literalist never diverges"
@@ -114,7 +129,7 @@ def test_safe_tests_are_legal_and_unique(spec):
     """Every literalist shot is reference-consistent by construction, and no
     two of them repeat the same arguments (which would be `duplicate`)."""
     seen = set()
-    for case in spec.SAFE_TESTS:
+    for case in POLICY_TABLES[spec.KEY].safe_tests:
         assert agrees(spec.reference, case["args"], case["expect"]), case
         key = json.dumps(canon(case["args"]), sort_keys=True)
         assert key not in seen, f"{spec.KEY}: duplicate safe test {case['name']}"
@@ -126,10 +141,15 @@ def test_safe_tests_are_legal_and_unique(spec):
 def test_edge_tests_include_illegal_shots(spec):
     """The pedant's aggressive shots are the lesson: at least one of them is
     rejected by the reference (and the literalist is never that reckless)."""
-    illegal = sum(1 for case in spec.EDGE_TESTS
-                  if not agrees(spec.reference, case["args"], case["expect"]))
+    illegal = sum(
+        1
+        for case in POLICY_TABLES[spec.KEY].edge_tests
+        if not agrees(spec.reference, case["args"], case["expect"])
+    )
     assert illegal >= 1, f"{spec.KEY}: no edge test is illegal"
-    assert illegal < len(spec.EDGE_TESTS), f"{spec.KEY}: every edge test illegal"
+    assert illegal < len(POLICY_TABLES[spec.KEY].edge_tests), (
+        f"{spec.KEY}: every edge test illegal"
+    )
 
 
 def test_keys_are_unique_and_match_the_registry():

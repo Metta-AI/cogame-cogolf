@@ -1,4 +1,4 @@
-# cogame-cogolf — wire protocol `cogame.cogolf.v1`
+# cogame-cogolf — wire protocol `cogame.cogolf.v2`
 
 Transport: one websocket per seat, `GET /player?slot=N&token=T`, one JSON text
 message per hole each way. Every wire string in this document comes from
@@ -8,7 +8,11 @@ message per hole each way. Every wire string in this document comes from
 ```
 server -> player   welcome        once per (re)connection
 server -> player   observation    one per hole, re-sent once with retry: true
-player -> server   submission     the reply
+player -> server   attempt_started  private monotone native snapshots
+player -> server   action           UUID + separately submitted ordinary control
+server -> player   stop             immutable owner-stop UUID, <=2s common deadline
+player -> server   stopped          matching UUID, actual owners_joined=true only
+server -> player   evidence_received  private snapshots and joins admitted
 server -> player   done           episode end; the player process exits 0
 ```
 
@@ -39,7 +43,7 @@ Runtime contract (environment): `COGAME_CONFIG_URI`, `COGAME_RESULTS_URI`,
 ## `welcome`
 
 ```json
-{"type": "welcome", "protocol": "cogame.cogolf.v1", "game_version": "GV01",
+{"type": "welcome", "protocol": "cogame.cogolf.v2", "game_version": "GV02",
  "slot": 0, "alias": "Ash", "opponent_alias": "Basil",
  "holes": 9, "hole_deadline_seconds": 40, "retry_deadline_seconds": 15,
  "rules": {"max_tests_per_hole": 5, "max_impl_chars": 4000,
@@ -49,7 +53,7 @@ Runtime contract (environment): `COGAME_CONFIG_URI`, `COGAME_RESULTS_URI`,
            "par_tests_per_hole": 4, "call_cpu_seconds": 1.0,
            "blocked": ["socket", "subprocess", "ctypes", "multiprocessing",
                        "threading", "file writes", "network"]},
- "episode": {"game_version": "GV01", "seats": 2, "slot": 0, "holes": 9,
+ "episode": {"game_version": "GV02", "seats": 2, "slot": 0, "holes": 9,
              "deck": "core", "deck_version": "core-1", "seed": 1234567,
              "scoring": "zero_sum_v1"},
  "api_docs": "<how to write a submission: the schema, the legality gate, the scoring formula, one worked example>"}
@@ -100,7 +104,7 @@ implementation; the contents of the par tests (only counts are revealed); the
 ambiguity note; which specs later holes will use; the opponent's real player
 name and policy; anything about other episodes.
 
-## `submission`
+## `action` and ordinary `submission` control
 
 ```json
 {"type": "submission", "hole": 3,
@@ -127,9 +131,25 @@ and every string that lands in the replay has its lone surrogates replaced with
 `U+FFFD` and its control characters (other than `\n` and `\t`) stripped, so the
 replay always parses under a strict UTF-8 JSON reader.
 
-A reply whose `hole` is not the pending hole is dropped and counted
-(`wrong_hole`); the hole keeps waiting until its deadline. A reply that arrives
-after the fallback has been synthesised is ignored.
+Each observation carries an engine-issued request_id UUID, slot and frozen native
+profile. The action envelope is {"type":"action","request_id":"<UUID>",
+"action":<ordinary submission above>,"selected_attempt_id":"<actual attempt ID>"}.
+Scripted actions have selected_attempt_id=null. A native selection must already
+be observed through attempt_started; the engine independently parses its exact
+received completion and compares the separately submitted control using the
+game equality rule. Stale UUIDs, rewritten bytes and differing controls reject.
+
+Private native evidence frames have a separate 16 MiB cap. Ordinary control
+retains its 16384-byte cap. The registered profile is repeated in welcome and
+every immutable observation; each native request must match that exact profile
+and private prompt. No participant can assert scripted teacher authority.
+
+Before public done/results/replay, every previously connected owner receives
+stop and must send matching stopped only after all native readers, policy tasks
+and coalesced progress writers join. The engine replies evidence_received.
+EOF after this acknowledgement is clean; EOF before it is not joined completion.
+Unresolved or disconnected owners withhold public completion. Repeated stops
+retain the original UUID and absolute deadline. Player refresh is mandatory.
 
 ## How a hole resolves
 
@@ -178,7 +198,7 @@ The harness treats a close frame or a truncated read as a clean end.
 `/global` is broadcast-only:
 
 ```json
-{"type":"status","game_version":"GV01","aliases":["Ash","Basil"],
+{"type":"status","game_version":"GV02","aliases":["Ash","Basil"],
  "names":["daveey","daveey-1"],"holes":9,"hole":0,"scores":[0,0],"done":false}
 {"type":"progress","hole":3,"scores":[3,-3],"killer":null}
 {"type":"done","result":{…}}
@@ -200,3 +220,17 @@ the player pods start.
 | a submitted impl loops, allocates or imports a blocked module | the sandbox kills it (1 s CPU per call, 6 s per batch, 256 MB address space); the affected calls become breaches |
 | the sandbox subprocess dies mid-batch | the NDJSON results that arrived are kept; missing calls are `timeout` |
 | the wall budget expires | the episode settles with `reason: "deadline"` on the last fully resolved hole |
+
+### Immutable native profile registration
+
+After `welcome`, each authenticated player sends one `ready` packet:
+
+```json
+{"type":"ready","slot":0,"profile":{"profile":"cogolf_native_text_v1","model":"anthropic/claude-haiku-4.5","temperature":0.7,"max_tokens":1800,"top_p":1,"strategy":"  exact policy strategy\n"}}
+```
+
+Registration preserves strategy whitespace and validates bounded typed controls.
+It must precede the first engine observation. Repeated, wrong-seat and late
+registrations are rejected. The registered profile becomes immutable for the
+episode and is recorded as player input. It grants no checkpoint identity or
+platform authority; serving receipts establish those facts independently.

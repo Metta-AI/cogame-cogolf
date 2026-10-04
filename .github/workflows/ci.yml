@@ -49,7 +49,7 @@ jobs:
         with:
           node-version: "22"
       - name: Sync Python deps
-        run: uv sync --frozen --extra llm
+        run: uv sync --frozen
       - name: Run tests
         run: uv run pytest -v
       - name: Export post-training matches

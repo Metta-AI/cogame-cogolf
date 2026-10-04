@@ -11,3 +11,11 @@ __pycache__
 docs
 tests
 scripts/art/source
+
+**/*.partial
+**/*.staging
+**/trajectory*.jsonl
+**/private*.jsonl
+training-corpora
+
+**/._*
