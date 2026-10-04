@@ -121,11 +121,10 @@ class Usage(BaseModel):
     output_tokens: StrictInt = Field(ge=0)
 
 
-class SamplingEvidence(PrivateModel):
+class SamplingFields(PrivateModel):
     policy_revision: str = Field(min_length=1)
     tokenizer_revision: str = Field(min_length=1)
     chat_template: str = Field(min_length=1)
-    sampling: Literal["full_softmax_temperature_one"] | None
     enable_thinking: StrictBool
     max_new_tokens: StrictInt = Field(gt=0)
     max_sequence_length: StrictInt = Field(gt=0)
@@ -138,16 +137,11 @@ class SamplingEvidence(PrivateModel):
     stop_reason: Literal["eos", "length"]
 
     @model_validator(mode="after")
-    def actual_draws(self) -> SamplingEvidence:
+    def actual_draws(self) -> SamplingFields:
         if self.enable_thinking:
             raise ValueError("action sample cannot include unobserved reasoning")
-        if self.sampling is None:
-            if self.behavior_log_probs is not None:
-                raise ValueError("greedy tokens cannot claim behavior probabilities")
-        else:
-            if self.behavior_log_probs is None or len(self.completion_token_ids) != len(
-                self.behavior_log_probs
-            ):
+        if self.behavior_log_probs is not None:
+            if len(self.behavior_log_probs) != len(self.completion_token_ids):
                 raise ValueError("draw probability count differs from token count")
             if any(value > 0 for value in self.behavior_log_probs):
                 raise ValueError("draw log probabilities must be nonpositive")
@@ -166,13 +160,47 @@ class SamplingEvidence(PrivateModel):
         return self
 
 
+class SamplingEvidence(SamplingFields):
+    """Stored unit-temperature or explicitly captured greedy metadata, unchanged."""
+
+    # Pydantic discriminated unions require every tag, including null, in Literal.
+    sampling: Literal["full_softmax_temperature_one", None]  # noqa: PYI061
+
+    @model_validator(mode="after")
+    def original_sampling_mode(self) -> SamplingEvidence:
+        if self.sampling is None:
+            if self.behavior_log_probs is not None:
+                raise ValueError("greedy decoding has no draw probabilities")
+        elif self.behavior_log_probs is None:
+            raise ValueError("sampled decoding lacks actual draw probabilities")
+        return self
+
+
+class TemperedSamplingEvidence(SamplingFields):
+    """Actual full-softmax draws from the serving model's scaled logits."""
+
+    sampling: Literal["full_softmax"]
+    temperature: float = Field(strict=True, gt=0, le=2)
+
+    @model_validator(mode="after")
+    def actual_scaled_draws(self) -> TemperedSamplingEvidence:
+        if self.behavior_log_probs is None:
+            raise ValueError("tempered decoding lacks actual draw probabilities")
+        return self
+
+
+SampledCompletion = Annotated[
+    SamplingEvidence | TemperedSamplingEvidence, Field(discriminator="sampling")
+]
+
+
 class Response(BaseModel):
     model_config = ConfigDict(extra="allow", hide_input_in_errors=True)
     model: str = Field(min_length=1)
     content: list[ResponseBlock]
     stop_reason: str
     usage: Usage
-    sampling_evidence: SamplingEvidence | None = None
+    sampling_evidence: SampledCompletion | None = None
 
     @property
     def text(self) -> str:
@@ -206,7 +234,7 @@ class Attempt(PrivateModel):
     model_identity: str | None = None
     tokenizer_identity: str | None = None
     chat_template_sha256: str | None = None
-    sampling_evidence: SamplingEvidence | None = None
+    sampling_evidence: SampledCompletion | None = None
     usage: Usage | None = None
     stop_reason: str | None = None
     timeout_ms: float | None = Field(default=None, gt=0)
@@ -349,7 +377,13 @@ async def complete(
                 raise ResponseRejected("native response has no action text")
             if result.sampling_evidence is not None:
                 sample = result.sampling_evidence
-                temperature = 0 if sample.sampling is None else 1
+                temperature = (
+                    sample.temperature
+                    if isinstance(sample, TemperedSamplingEvidence)
+                    else 0
+                    if sample.sampling is None
+                    else 1
+                )
                 if (
                     request.temperature != temperature
                     or request.top_p != 1

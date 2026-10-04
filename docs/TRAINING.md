@@ -29,6 +29,14 @@ metadata. Thinking remains private auxiliary evidence. Missing tokens or
 probabilities remain absent. HTTP fixtures establish protocol behavior, not an
 authenticated platform archive or model strength.
 
+The native profile explicitly defaults to temperature `0.7`, top-p `1`, and
+1,800 output tokens. This profile is new: the original provider request omitted
+temperature and top-p. `COWORLD_LLM_TEMPERATURE` freezes an explicit override
+before the first private window. Captured `full_softmax` evidence must carry
+the exact requested temperature; stored `full_softmax_temperature_one` evidence
+retains its original fields and requires temperature `1`. Greedy responses
+retain no invented draw probabilities.
+
 ## Source-controlled teachers
 
 ```sh
