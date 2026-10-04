@@ -49,7 +49,9 @@ async def test_cancelled_dns_wait_kills_and_joins_only_owned_lookup(monkeypatch)
     before = set(threading.enumerate())
     lookup = asyncio.create_task(OwnedResolver().resolve("localhost", 3131))
     await launched.wait()
-    assert os.getpriority(os.PRIO_PROCESS, children[0].pid) == 19
+    assert os.getpriority(os.PRIO_PROCESS, children[0].pid) == os.getpriority(
+        os.PRIO_PROCESS, 0
+    )
     lookup.cancel()
     _done, pending = await asyncio.wait({lookup}, timeout=2)
     assert not pending and lookup.cancelled()
